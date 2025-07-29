@@ -1,0 +1,2 @@
+# Ansible inventory file for IAM HA Stack
+# Define bastion and backend hosts here
