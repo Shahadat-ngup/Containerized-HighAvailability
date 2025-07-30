@@ -1,0 +1,15 @@
+# Ignore sensitive files and directories
+secrets/
+.env
+.env.*
+*.key
+*.crt
+*.pem
+vault.yaml
+# Ignore Docker and Ansible artifacts
+*.log
+__pycache__/
+*.pyc
+# Ignore system files
+.DS_Store
+Thumbs.db
