@@ -13,7 +13,7 @@ DOMAIN=your_domain
 - Store your Dynu API key, email, and domain in `.env` (do not hardcode in scripts).
 - Use `request_cert.sh` to request certificates using lego and Dynu DNS.
 - Generated certificates are found in `.lego/certificates/`.
-- To create a fullchain certificate, concatenate your domain certificate and issuer certificate:
+- To create a fullchain certificate, concatenate your domain certificate and issuer certificate, but this is already included in our script:
 
 ```bash
 cat .lego/certificates/_wildcard.<your-domain>.crt .lego/certificates/_wildcard.<your-domain>.issuer.crt > fullchain.pem
