@@ -1,0 +1,121 @@
+# Backend services for Keycloak deployment
+# PostgreSQL + etcd + Keycloak for HA setup
+
+services:
+  # etcd for service discovery and consensus
+  etcd-backend:
+    image: quay.io/coreos/etcd:v3.5.16
+    container_name: etcd-backend${NODE_ID}
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - etcd_data:/etcd-data
+    environment:
+      - ETCD_DATA_DIR=/etcd-data
+      - ETCD_NAME=etcd-${NODE_ID}
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://${NODE_IP}:2380
+      - ETCD_LISTEN_PEER_URLS=http://${NODE_IP}:2380
+      - ETCD_ADVERTISE_CLIENT_URLS=http://${NODE_IP}:2379
+      - ETCD_LISTEN_CLIENT_URLS=http://${NODE_IP}:2379,http://127.0.0.1:2379
+      - ETCD_INITIAL_CLUSTER=etcd-1=http://172.29.65.52:2380,etcd-2=http://172.29.65.53:2380,etcd-3=http://172.29.65.54:2380
+      - ETCD_INITIAL_CLUSTER_STATE=new
+      - ETCD_INITIAL_CLUSTER_TOKEN=${ETCD_TOKEN:-etcd-cluster-keycloak}
+    # Temporarily disable health check for single node deployment
+    # healthcheck:
+    #   test: ["CMD-SHELL", "ETCDCTL_API=3 etcdctl endpoint health --endpoints=127.0.0.1:2379"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 30s
+
+  # PostgreSQL database for Keycloak
+  postgres-backend:
+    image: postgres:17
+    container_name: postgres-backend${NODE_ID}
+    restart: unless-stopped
+    network_mode: host
+    # Temporarily disable dependency for single node deployment
+    # depends_on:
+    #   etcd-backend:
+    #     condition: service_healthy
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_logs:/var/log/postgresql
+    environment:
+      - POSTGRES_USER=keycloak
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=keycloak
+      - PGUSER=keycloak
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Keycloak identity server
+  keycloak-backend:
+    image: quay.io/keycloak/keycloak:26.3.2
+    container_name: keycloak-backend${NODE_ID}
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      postgres-backend:
+        condition: service_healthy
+    environment:
+      # Admin user (using latest 26.3+ variable names)
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KC_BOOTSTRAP_ADMIN_PASSWORD}
+      
+      # Database configuration
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://${NODE_IP}:5432/keycloak
+      - KC_DB_USERNAME=keycloak
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD}
+      
+      # HTTP configuration
+      - KC_HTTP_ENABLED=true
+      - KC_HTTP_PORT=8080
+      
+      # Proxy configuration for load balancer
+      - KC_PROXY=edge
+      - KC_PROXY_HEADERS=xforwarded
+      
+      # Hostname configuration - allow all for load balancer
+      - KC_HOSTNAME_STRICT=false
+      - KC_HOSTNAME_STRICT_HTTPS=false
+      
+      # Health check endpoint
+      - KC_HEALTH_ENABLED=true
+      
+      # Additional configuration for admin console (simplified)
+      - KC_TRANSACTION_XA_ENABLED=false
+      
+      # Locale configuration to fix "somethingWentWrong" issue
+      - KC_LOCALE_DEFAULT=en
+      
+      # Logging (back to normal level)
+      - KC_LOG_LEVEL=INFO
+      
+      # Cache configuration for cluster (using recommended JDBC_PING)
+      - KC_CACHE=ispn
+      - KC_CACHE_STACK=jdbc-ping
+      - JGROUPS_DISCOVERY_PROTOCOL=JDBC_PING
+      - JGROUPS_DISCOVERY_PROPERTIES=datasource_jndi_name=java:jboss/datasources/KeycloakDS,info_writer_sleep_time=500,initialize_sql="CREATE TABLE IF NOT EXISTS JGROUPSPING (own_addr varchar(200) NOT NULL, cluster_name varchar(200) NOT NULL, created timestamp default current_timestamp, ping_data BYTEA, constraint PK_JGROUPSPING PRIMARY KEY (own_addr, cluster_name))"
+      
+    command: ["start"]
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && exit 0 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+volumes:
+  etcd_data:
+    driver: local
+  postgres_data:
+    driver: local
+  postgres_logs:
+    driver: local

@@ -1,0 +1,17 @@
+# Ignore sensitive files and directories
+secrets/
+.env
+backend1.env
+.env.*
+*.key
+*.crt
+*.pem
+vault.yaml
+.lego
+# Ignore Docker and Ansible artifacts
+*.log
+__pycache__/
+*.pyc
+# Ignore system files
+.DS_Store
+Thumbs.db
