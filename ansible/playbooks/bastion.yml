@@ -1,1 +1,126 @@
-# Bastion playbook
+---
+# Bastion playbook - Docker container approach
+- name: Deploy Bastion Hosts
+  hosts: bastion
+  become: yes
+  vars:
+    domain_name: "skeycloak.loseyourip.com"
+    vip: "193.136.194.100"
+    interface: "enX0"
+  
+  tasks:
+    - name: Stop and disable system nginx service
+      systemd:
+        name: nginx
+        state: stopped
+        enabled: no
+        daemon_reload: yes
+      ignore_errors: yes
+
+    - name: Remove system nginx package completely
+      apt:
+        name: nginx
+        state: absent
+        purge: yes
+      ignore_errors: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - keepalived
+          - curl
+          - docker.io
+          - docker-compose
+          - psmisc
+        state: present
+        update_cache: yes
+
+    - name: Create required directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      loop:
+        - /opt/iam-bastion
+        - /etc/ssl/private
+
+    - name: Copy SSL certificates
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - src: /home/shahadat/Desktop/Federated-HA-Containerized/iam-ha-stack/secrets/.lego/certificates/fullchain.pem
+          dest: /etc/ssl/certs/skeycloak.loseyourip.com.pem
+          mode: '0644'
+        - src: /home/shahadat/Desktop/Federated-HA-Containerized/iam-ha-stack/secrets/.lego/certificates/_.skeycloak.loseyourip.com.key
+          dest: /etc/ssl/private/skeycloak.loseyourip.com.key
+          mode: '0600'
+      ignore_errors: yes
+
+    - name: Copy Docker Compose configuration from repository
+      copy:
+        src: /home/shahadat/Desktop/Federated-HA-Containerized/iam-ha-stack/docker/bastion/docker-compose.yml
+        dest: /opt/iam-bastion/docker-compose.yml
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+        remote_src: no
+
+    - name: Copy nginx configuration from repository
+      copy:
+        src: /home/shahadat/Desktop/Federated-HA-Containerized/iam-ha-stack/docker/bastion/nginx.conf
+        dest: /opt/iam-bastion/nginx.conf
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+        remote_src: no
+
+    - name: Start Docker nginx service
+      shell: |
+        cd /opt/iam-bastion
+        docker compose down || true
+        docker compose up -d
+      register: docker_result
+
+    - name: Show Docker compose output
+      debug:
+        var: docker_result
+
+    - name: Wait for nginx container to be ready
+      wait_for:
+        port: 80
+        host: "{{ ansible_default_ipv4.address }}"
+        delay: 10
+        timeout: 60
+
+    - name: Wait for nginx HTTPS to be ready
+      wait_for:
+        port: 443
+        host: "{{ ansible_default_ipv4.address }}"
+        delay: 10
+        timeout: 60
+
+    - name: Test nginx container health
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:80/"
+        method: GET
+        timeout: 10
+      register: nginx_health
+      ignore_errors: yes
+
+    - name: Display nginx health result
+      debug:
+        msg: "Nginx container: {{ 'HEALTHY' if nginx_health.status == 200 or nginx_health.status == 301 or nginx_health.status == 302 else 'UNHEALTHY' }}"
+
+    - name: Display service endpoints
+      debug:
+        msg: |
+          Bastion services deployed on {{ ansible_hostname }} ({{ ansible_default_ipv4.address }}):
+          - HTTP: http://{{ ansible_default_ipv4.address }}:80
+          - HTTPS: https://{{ ansible_default_ipv4.address }}:443
+          - Public Domain: https://{{ domain_name }}

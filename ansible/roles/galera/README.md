@@ -1,1 +1,0 @@
-# Galera role

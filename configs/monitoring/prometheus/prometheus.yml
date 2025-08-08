@@ -1,0 +1,73 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node-exporter-bastion1'
+    static_configs:
+      - targets: ['193.136.194.103:9100']
+    scrape_interval: 30s
+
+  - job_name: 'node-exporter-bastion2'
+    static_configs:
+      - targets: ['193.136.194.104:9100']
+    scrape_interval: 30s
+
+  - job_name: 'node-exporter-backend1'
+    static_configs:
+      - targets: ['172.29.65.52:9100']
+    scrape_interval: 30s
+
+  - job_name: 'node-exporter-backend2'
+    static_configs:
+      - targets: ['172.29.65.53:9100']
+    scrape_interval: 30s
+
+  - job_name: 'node-exporter-backend3'
+    static_configs:
+      - targets: ['172.29.65.54:9100']
+    scrape_interval: 30s
+
+  - job_name: 'haproxy-bastion1'
+    static_configs:
+      - targets: ['193.136.194.103:8404']
+    scrape_interval: 30s
+    metrics_path: '/stats/prometheus'
+
+  - job_name: 'haproxy-bastion2'
+    static_configs:
+      - targets: ['193.136.194.104:8404']
+    scrape_interval: 30s
+    metrics_path: '/stats/prometheus'
+
+  - job_name: 'keycloak-backend1'
+    static_configs:
+      - targets: ['172.29.65.52:8080']
+    scrape_interval: 30s
+    metrics_path: '/auth/realms/master/metrics'
+
+  - job_name: 'keycloak-backend2'
+    static_configs:
+      - targets: ['172.29.65.53:8080']
+    scrape_interval: 30s
+    metrics_path: '/auth/realms/master/metrics'
+
+  - job_name: 'keycloak-backend3'
+    static_configs:
+      - targets: ['172.29.65.54:8080']
+    scrape_interval: 30s
+    metrics_path: '/auth/realms/master/metrics'

@@ -1,17 +1,12 @@
 # Ignore sensitive files and directories
-secrets/.env
-secrets/.env.*
-secrets/*.key
-secrets/*.crt
-secrets/*.pem
-secrets/vault.yaml
+secrets/
 .env
 .env.*
 *.key
 *.crt
 *.pem
 vault.yaml
-.lego/
+.lego
 # Ignore Docker and Ansible artifacts
 *.log
 __pycache__/

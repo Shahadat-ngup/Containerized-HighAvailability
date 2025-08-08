@@ -1,1 +1,0 @@
-# Keepalived role
