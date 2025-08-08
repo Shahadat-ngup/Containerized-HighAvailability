@@ -7,10 +7,12 @@ secrets/
 *.pem
 vault.yaml
 .lego
+
 # Ignore Docker and Ansible artifacts
 *.log
 __pycache__/
 *.pyc
+
 # Ignore system files
 .DS_Store
 Thumbs.db
