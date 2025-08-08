@@ -1,7 +1,11 @@
 # Ignore sensitive files and directories
 secrets/
+!secrets/.env.template
+!secrets/README.md
+!secrets/request_cert.sh
 .env
 .env.*
+!*.env.template
 *.key
 *.crt
 *.pem
