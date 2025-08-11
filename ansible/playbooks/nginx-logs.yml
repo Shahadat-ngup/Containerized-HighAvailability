@@ -1,0 +1,14 @@
+---
+- name: Collect nginx logs from all bastion hosts
+  hosts: bastion
+  become: yes
+  tasks:
+    - name: Get nginx container logs
+      shell: |
+        docker logs --tail 100 iam-bastion-nginx-1 2>&1 || echo "No logs found for iam-bastion-nginx-1"
+      register: nginx_logs
+      changed_when: false
+
+    - name: Show nginx logs
+      debug:
+        var: nginx_logs.stdout

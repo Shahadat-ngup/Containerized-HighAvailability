@@ -1,0 +1,14 @@
+---
+- name: Collect Keycloak container logs from all backends
+  hosts: postgres_cluster
+  become: yes
+  tasks:
+    - name: Get Keycloak container logs
+      shell: |
+        docker logs --tail 100 keycloak-backend{{ postgres_node_id }} 2>&1 || echo "No logs found for keycloak-backend{{ postgres_node_id }}"
+      register: keycloak_logs
+      changed_when: false
+
+    - name: Show Keycloak logs
+      debug:
+        var: keycloak_logs.stdout

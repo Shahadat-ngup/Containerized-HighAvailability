@@ -67,43 +67,44 @@ services:
       # Admin user (using latest 26.3+ variable names)
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
       - KC_BOOTSTRAP_ADMIN_PASSWORD=${KC_BOOTSTRAP_ADMIN_PASSWORD}
-      
-      # Database configuration
+
+      # Database configuration (use VIP for HA)
       - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://${NODE_IP}:5432/keycloak
+      - KC_DB_URL=jdbc:postgresql://172.29.65.100:5432/keycloak
       - KC_DB_USERNAME=keycloak
       - KC_DB_PASSWORD=${POSTGRES_PASSWORD}
-      
+
       # HTTP configuration
       - KC_HTTP_ENABLED=true
       - KC_HTTP_PORT=8080
-      
+
       # Proxy configuration for load balancer
       - KC_PROXY=edge
       - KC_PROXY_HEADERS=xforwarded
-      
-      # Hostname configuration - allow all for load balancer
+
+      # Hostname configuration for correct asset and URL generation
+      - KC_HOSTNAME=skeycloak.loseyourip.com
       - KC_HOSTNAME_STRICT=false
       - KC_HOSTNAME_STRICT_HTTPS=false
-      
+
       # Health check endpoint
       - KC_HEALTH_ENABLED=true
-      
+
       # Additional configuration for admin console (simplified)
       - KC_TRANSACTION_XA_ENABLED=false
-      
+
       # Locale configuration to fix "somethingWentWrong" issue
       - KC_LOCALE_DEFAULT=en
-      
+
       # Logging (back to normal level)
       - KC_LOG_LEVEL=INFO
-      
+
       # Cache configuration for cluster (using recommended JDBC_PING)
       - KC_CACHE=ispn
       - KC_CACHE_STACK=jdbc-ping
       - JGROUPS_DISCOVERY_PROTOCOL=JDBC_PING
       - JGROUPS_DISCOVERY_PROPERTIES=datasource_jndi_name=java:jboss/datasources/KeycloakDS,info_writer_sleep_time=500,initialize_sql="CREATE TABLE IF NOT EXISTS JGROUPSPING (own_addr varchar(200) NOT NULL, cluster_name varchar(200) NOT NULL, created timestamp default current_timestamp, ping_data BYTEA, constraint PK_JGROUPSPING PRIMARY KEY (own_addr, cluster_name))"
-      
+
     command: ["start"]
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && exit 0 || exit 1"]
