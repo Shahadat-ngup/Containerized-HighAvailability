@@ -38,19 +38,15 @@
 
     - name: Template keepalived config for public VIP
       template:
-        src: "../../templates/keepalived.conf.j2"
+        src: "../templates/keepalived.conf.j2"
         dest: /etc/keepalived/keepalived.conf
         owner: root
         group: root
         mode: "0644"
       vars:
         vrrp_instance_name: "PUBLICVIP"
-        keepalived_state: "{{ keepalived_state | default('BACKUP') }}"
-        keepalived_priority: "{{ keepalived_priority | default('100') }}"
-        keepalived_interface: "{{ interface | default(ansible_default_ipv4.interface) }}"
         keepalived_vrid: 50
         keepalived_vip: "{{ vip }}" # Set your public VIP here
-        keepalived_vip_cidr: "{{ keepalived_vip_cidr }}"
 
     - name: Restart keepalived for public VIP
       systemd:
