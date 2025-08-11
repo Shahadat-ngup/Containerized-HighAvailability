@@ -8,7 +8,9 @@
     postgres_password: "SecureKeycloakPass2024"
     admin_password: "SecureKeycloakAdmin2024"
     etcd_token: "etcd-cluster-patroni"
-  
+    keepalived_vip_cidr: 23
+    interface: "enX0"
+
   tasks:
     - name: Install required packages
       apt:
@@ -20,13 +22,41 @@
         state: present
         update_cache: yes
 
+    - name: Install keepalived for DB VIP
+      apt:
+        name: keepalived
+        state: present
+        update_cache: yes
+
+    - name: Template keepalived config for DB VIP
+      template:
+        src: "../../templates/keepalived.conf.j2"
+        dest: /etc/keepalived/keepalived.conf
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        vrrp_instance_name: "DBVIP"
+        keepalived_state: "{{ keepalived_state | default('BACKUP') }}"
+        keepalived_priority: "{{ keepalived_priority | default('100') }}"
+        keepalived_interface: "{{ ansible_default_ipv4.interface | default('eth0') }}"
+        keepalived_vrid: 51
+        keepalived_vip: "172.29.65.100" # Set your DB VIP here
+        keepalived_vip_cidr: "{{ keepalived_vip_cidr }}"
+
+    - name: Restart keepalived for DB VIP
+      systemd:
+        name: keepalived
+        state: restarted
+        enabled: yes
+
     - name: Create backend deployment directory
       file:
         path: /opt/iam-backend
         state: directory
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
-        mode: '0755'
+        mode: "0755"
 
     - name: Stop and remove existing containers
       shell: |
@@ -40,11 +70,11 @@
 
     - name: Copy Docker Compose configuration from repository
       copy:
-        src: /home/shahadat/Desktop/Federated-HA-Containerized/iam-ha-stack/docker/backend/docker-compose.yml
+        src: "{{ playbook_dir }}/../../docker/backend/docker-compose.yml"
         dest: /opt/iam-backend/docker-compose.yml
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
-        mode: '0644'
+        mode: "0644"
         remote_src: no
 
     - name: Create .env file for Docker Compose
@@ -82,7 +112,7 @@
         dest: /opt/iam-backend/.env
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
-        mode: '0600'
+        mode: "0600"
 
     - name: Copy SSL certificates to backend hosts
       copy:
@@ -92,12 +122,12 @@
         group: root
         mode: "{{ item.mode }}"
       loop:
-        - src: /home/shahadat/Desktop/Federated-HA-Containerized/iam-ha-stack/secrets/.lego/certificates/fullchain.pem
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/fullchain.pem"
           dest: /etc/ssl/certs/{{ domain_name }}.pem
-          mode: '0644'
-        - src: /home/shahadat/Desktop/Federated-HA-Containerized/iam-ha-stack/secrets/.lego/certificates/_.skeycloak.loseyourip.com.key
+          mode: "0644"
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/_.skeycloak.loseyourip.com.key"
           dest: /etc/ssl/private/{{ domain_name }}.key
-          mode: '0600'
+          mode: "0600"
       ignore_errors: yes
 
     - name: Ensure SSL directories exist
@@ -106,10 +136,12 @@
         state: directory
         owner: root
         group: root
-        mode: '0755'
+        mode: "0755"
       loop:
         - /etc/ssl/certs
         - /etc/ssl/private
+
+    -
 
     - name: Start Docker services with rebuild
       shell: |
@@ -120,7 +152,7 @@
         # Start services with rebuild to ensure configuration changes are applied
         docker compose up -d --build
       register: docker_result
-      
+
     - name: Show Docker compose output
       debug:
         var: docker_result
