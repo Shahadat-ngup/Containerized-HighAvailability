@@ -1,0 +1,38 @@
+---
+- name: Patch pg_hba.conf for Patroni replication
+  hosts: backend1
+  become: true
+  tasks:
+    - name: Ensure replication entry exists in pg_hba.conf
+      shell: |
+        docker exec patroni-backend1 bash -c "echo 'host    replication    all    172.29.65.0/24    md5' >> /var/lib/postgresql/data/pg_hba.conf"
+      register: patch_result
+
+    - name: Ensure postgres user and all users can connect from backend subnet
+      shell: |
+        docker exec patroni-backend1 bash -c "echo 'host    all    postgres    172.29.65.0/24    md5' >> /var/lib/postgresql/data/pg_hba.conf"
+        docker exec patroni-backend1 bash -c "echo 'host    all    all    172.29.65.0/24    md5' >> /var/lib/postgresql/data/pg_hba.conf"
+      register: patch_all_result
+
+    - name: Reload PostgreSQL to apply pg_hba.conf changes
+      shell: |
+        docker exec patroni-backend1 /usr/lib/postgresql/16/bin/pg_ctl reload -D /var/lib/postgresql/data
+      when: patch_result is changed
+
+- name: Fix data directory permissions for Patroni replicas
+  hosts: backend2,backend3
+  become: true
+  tasks:
+    - name: Set correct permissions on Patroni data directory
+      shell: |
+        docker exec patroni-backend{{ hostvars[inventory_hostname]['postgres_node_id'] }} chmod 700 /var/lib/postgresql/data
+      ignore_errors: yes
+
+    - name: Show data directory permissions for Patroni replicas
+      shell: |
+        docker exec patroni-backend{{ hostvars[inventory_hostname]['postgres_node_id'] }} ls -ld /var/lib/postgresql/data
+      register: dir_perms
+
+    - name: Display directory permissions
+      debug:
+        var: dir_perms.stdout

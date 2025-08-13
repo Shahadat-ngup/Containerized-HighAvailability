@@ -28,27 +28,27 @@ services:
     #   retries: 3
     #   start_period: 30s
 
-  # PostgreSQL database for Keycloak
-  postgres-backend:
-    image: postgres:17
-    container_name: postgres-backend${NODE_ID}
+  # Patroni HA PostgreSQL
+  patroni-backend:
+    image: patroni:latest
+    container_name: patroni-backend${NODE_ID}
     restart: unless-stopped
     network_mode: host
-    # Temporarily disable dependency for single node deployment
-    # depends_on:
-    #   etcd-backend:
-    #     condition: service_healthy
+    depends_on:
+      etcd-backend:
+        condition: service_started
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - postgres_logs:/var/log/postgresql
+      - ./patroni.yml:/config/patroni.yml:ro
     environment:
-      - POSTGRES_USER=keycloak
+      - PATRONI_CONFIG_FILE=/config/patroni.yml
+      - NODE_IP=${NODE_IP}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=keycloak
-      - PGUSER=keycloak
-      - POSTGRES_HOST_AUTH_METHOD=md5
+      - REPLICATOR_PASSWORD=${REPLICATOR_PASSWORD}
+      - PATRONI_NAME=patroni-${NODE_ID}
+      - ETCDCTL_ENDPOINTS=http://172.29.65.52:2379,http://172.29.65.53:2379,http://172.29.65.54:2379
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8008/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -61,7 +61,7 @@ services:
     restart: unless-stopped
     network_mode: host
     depends_on:
-      postgres-backend:
+      patroni-backend:
         condition: service_healthy
     environment:
       # Admin user (using latest 26.3+ variable names)

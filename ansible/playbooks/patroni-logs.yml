@@ -1,0 +1,15 @@
+---
+# Playbook to fetch recent logs from Patroni backend containers
+- name: Collect Patroni backend container logs
+  hosts: postgres_cluster
+  become: yes
+  tasks:
+    - name: Get recent logs from Patroni backend container
+      shell: |
+        docker logs --tail 100 patroni-backend{{ postgres_node_id }}
+      register: patroni_logs
+      failed_when: false
+
+    - name: Show Patroni logs for this node
+      debug:
+        msg: "Patroni logs for backend{{ postgres_node_id }}:\n{{ patroni_logs.stdout }}"

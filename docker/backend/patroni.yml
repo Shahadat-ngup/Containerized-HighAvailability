@@ -1,0 +1,65 @@
+scope: postgres
+name: keycloak-ha
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: {{ NODE_IP }}:8008
+etcd:
+  protocol: v3
+  hosts: 172.29.65.52:2379,172.29.65.53:2379,172.29.65.54:2379
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: {{ NODE_IP }}:5432
+  data_dir: /var/lib/postgresql/data
+  bin_dir: /usr/lib/postgresql/16/bin
+  authentication:
+    superuser:
+      username: postgres
+      password: {{ POSTGRES_PASSWORD }}
+    replication:
+      username: replicator
+      password: {{ REPLICATOR_PASSWORD }}
+  parameters:
+    wal_level: replica
+    hot_standby: "on"
+    max_wal_senders: 10
+    max_replication_slots: 10
+    wal_keep_size: 64
+    archive_mode: "on"
+    archive_command: 'cd .'
+    max_connections: 100
+    shared_buffers: 256MB
+    log_statement: "all"
+    log_connections: "on"
+    log_disconnections: "on"
+    log_min_messages: "info"
+    log_min_error_statement: "error"
+    log_min_duration_statement: 0
+    log_checkpoints: "on"
+    log_lock_waits: "on"
+    log_temp_files: 0
+    log_autovacuum_min_duration: 0
+    log_timezone: "UTC"
+    timezone: "UTC"
+    synchronous_commit: "on"
+    synchronous_standby_names: '*'
+    password_encryption: scram-sha-256
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+    - locale: en_US.UTF-8
+  users:
+    keycloak:
+      password: {{ POSTGRES_PASSWORD }}
+      options:
+        - createrole
+        - createdb
+        - replication

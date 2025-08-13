@@ -1,0 +1,154 @@
+---
+- name: Backend Setup Phase
+  hosts: postgres_cluster
+  become: yes
+  vars:
+    domain_name: "skeycloak.loseyourip.com"
+    postgres_password: "SecureKeycloakPass2024"
+    admin_password: "SecureKeycloakAdmin2024"
+    etcd_token: "etcd-cluster-patroni"
+    keepalived_vip_cidr: 23
+    interface: "enX0"
+
+  pre_tasks:
+    - name: Build Patroni image
+      include_tasks: patroni-image-tasks.yml
+    - name: Create .env file for Docker Compose
+      copy:
+        content: |
+          # Backend environment variables for Keycloak + PostgreSQL deployment
+          NODE_ID={{ postgres_node_id }}
+          NODE_IP={{ ansible_default_ipv4.address }}
+          DOMAIN_NAME={{ domain_name }}
+          POSTGRES_DB=keycloak
+          POSTGRES_USER=keycloak
+          POSTGRES_PASSWORD={{ postgres_password }}
+          REPLICATOR_PASSWORD={{ replicator_password | default('SecureReplicatorPass2024') }}
+          DB_URL=jdbc:postgresql://{{ ansible_default_ipv4.address }}:5432/keycloak
+          ETCD_TOKEN={{ etcd_token }}
+          KC_BOOTSTRAP_ADMIN_USERNAME=admin
+          KC_BOOTSTRAP_ADMIN_PASSWORD={{ admin_password }}
+          KC_HTTP_PORT=8080
+          KC_LOG_LEVEL=INFO
+          KC_PROXY_HEADERS=xforwarded
+        dest: /opt/iam-backend/.env
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0600"
+    - name: Copy SSL certificates to backend hosts
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/fullchain.pem"
+          dest: /etc/ssl/certs/{{ domain_name }}.pem
+          mode: "0644"
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/_.skeycloak.loseyourip.com.key"
+          dest: /etc/ssl/private/{{ domain_name }}.key
+          mode: "0600"
+      ignore_errors: yes
+    - name: Ensure SSL directories exist
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - /etc/ssl/certs
+        - /etc/ssl/private
+
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+          - curl
+          - postgresql-client
+        state: present
+        update_cache: yes
+    - name: Install keepalived for DB VIP
+      apt:
+        name: keepalived
+        state: present
+        update_cache: yes
+    - name: Template keepalived config for DB VIP
+      template:
+        src: "../templates/keepalived.conf.j2"
+        dest: /etc/keepalived/keepalived.conf
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        vrrp_instance_name: "DBVIP"
+        keepalived_vrid: 51
+        keepalived_vip: "172.29.65.100"
+    - name: Restart keepalived for DB VIP
+      systemd:
+        name: keepalived
+        state: restarted
+        enabled: yes
+    - name: Create backend deployment directory
+      file:
+        path: /opt/iam-backend
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+    - name: Stop and remove existing containers
+      shell: |
+        docker stop etcd-backend{{ postgres_node_id }} patroni-backend{{ postgres_node_id }} keycloak-backend{{ postgres_node_id }} || true
+        docker rm etcd-backend{{ postgres_node_id }} patroni-backend{{ postgres_node_id }} keycloak-backend{{ postgres_node_id }} || true
+        docker stop postgres-backend{{ postgres_node_id }} || true
+        docker rm postgres-backend{{ postgres_node_id }} || true
+      ignore_errors: yes
+    - name: Remove any old patroni.yml config
+      file:
+        path: /opt/iam-backend/patroni.yml
+        state: absent
+    - name: Copy Docker Compose configuration from repository
+      copy:
+        src: "{{ playbook_dir }}/../../docker/backend/docker-compose.yml"
+        dest: /opt/iam-backend/docker-compose.yml
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+        remote_src: no
+    - name: Show NODE_IP from group_vars
+      debug:
+        var: NODE_IP
+    - name: Map playbook vars to template vars for Patroni
+      set_fact:
+        NODE_IP: "{{ NODE_IP | default(ansible_host) }}"
+        POSTGRES_PASSWORD: "{{ POSTGRES_PASSWORD | default(postgres_password) }}"
+        REPLICATOR_PASSWORD: "{{ REPLICATOR_PASSWORD | default(replicator_password | default('SecureReplicatorPass2024')) }}"
+    - name: Template latest patroni.yml config
+      template:
+        src: "{{ playbook_dir }}/../../docker/backend/patroni.yml.j2"
+        dest: /opt/iam-backend/patroni.yml
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+    - name: Validate patroni.yml is fully rendered (no Jinja2 variables left)
+      shell: |
+        if grep -q '\{\{' /opt/iam-backend/patroni.yml; then
+          echo 'ERROR: patroni.yml contains unrendered Jinja2 variables.'
+          exit 1
+        fi
+      register: patroni_render_check
+      failed_when: patroni_render_check.rc != 0
+      changed_when: false
+    - name: Start Docker services with rebuild
+      shell: |
+        cd /opt/iam-backend
+        docker compose down --remove-orphans --volumes
+        docker compose pull etcd-backend keycloak-backend
+        docker compose up -d --build
+      register: docker_result
+    - name: Show Docker compose output
+      debug:
+        var: docker_result

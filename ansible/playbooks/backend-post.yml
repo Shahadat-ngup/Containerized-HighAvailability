@@ -1,0 +1,61 @@
+---
+- name: Backend Post-Deployment Phase
+  hosts: postgres_cluster
+  become: yes
+  tasks:
+    - name: Ensure keycloak database exists
+      shell: |
+        docker exec patroni-backend1 psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'keycloak'" | grep -q 1 || \
+        docker exec patroni-backend1 psql -U postgres -c "CREATE DATABASE keycloak OWNER keycloak;"
+      changed_when: false
+      when: inventory_hostname == 'backend1'
+
+    - name: Start Keycloak container on backend2
+      shell: docker start keycloak-backend2
+      when: inventory_hostname == 'backend2'
+      register: keycloak_start_backend2
+      changed_when: keycloak_start_backend2.rc == 0
+      ignore_errors: yes
+
+    - name: Start Keycloak container on backend3
+      shell: docker start keycloak-backend3
+      when: inventory_hostname == 'backend3'
+      register: keycloak_start_backend3
+      changed_when: keycloak_start_backend3.rc == 0
+      ignore_errors: yes
+    - name: Wait for etcd to be ready
+      wait_for:
+        port: 2379
+        host: "{{ ansible_default_ipv4.address }}"
+        delay: 10
+        timeout: 60
+
+    - name: Wait for PostgreSQL to be ready
+      wait_for:
+        port: 5432
+        host: "{{ ansible_default_ipv4.address }}"
+        delay: 30
+        timeout: 180
+
+    - name: Wait for Keycloak to be ready
+      wait_for:
+        port: 8080
+        host: "{{ ansible_default_ipv4.address }}"
+        delay: 60
+        timeout: 300
+
+    - name: Display health check results
+      debug:
+        msg: "{{ item.item.service }}: {{ 'HEALTHY' if item.status == 200 else 'UNHEALTHY' }}"
+      loop: "{{ health_check.results }}"
+      when: health_check.results is defined
+
+    - name: Display service endpoints
+      debug:
+        msg: |
+          Backend services deployed on {{ ansible_hostname }} ({{ ansible_default_ipv4.address }}):
+          - etcd: http://{{ ansible_default_ipv4.address }}:2379
+          - PostgreSQL: {{ ansible_default_ipv4.address }}:5432
+          - Keycloak: http://{{ ansible_default_ipv4.address }}:8080
+          - Admin Console: http://{{ ansible_default_ipv4.address }}:8080/admin
+          - Health Check: http://{{ ansible_default_ipv4.address }}:8080/health/ready

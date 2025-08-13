@@ -1,0 +1,42 @@
+- name: Ensure Patroni Docker build directory exists
+  file:
+    path: /opt/patroni-docker
+    state: directory
+    owner: "{{ ansible_user | default('root') }}"
+    group: "{{ ansible_user | default('root') }}"
+    mode: "0755"
+
+- name: Copy Patroni Dockerfile
+  copy:
+    src: "{{ playbook_dir }}/../../docker/backend/Dockerfile"
+    dest: /opt/patroni-docker/Dockerfile
+    owner: "{{ ansible_user | default('root') }}"
+    group: "{{ ansible_user | default('root') }}"
+    mode: "0644"
+    remote_src: no
+
+- name: Copy Patroni entrypoint.sh
+  copy:
+    src: "{{ playbook_dir }}/../../docker/backend/entrypoint.sh"
+    dest: /opt/patroni-docker/entrypoint.sh
+    owner: "{{ ansible_user | default('root') }}"
+    group: "{{ ansible_user | default('root') }}"
+    mode: "0755"
+    remote_src: no
+
+- name: Remove existing Patroni Docker image (optional)
+  community.docker.docker_image:
+    name: patroni
+    tag: latest
+    state: absent
+    force_absent: true
+  ignore_errors: yes
+
+- name: Build Patroni Docker image from /opt/patroni-docker
+  community.docker.docker_image:
+    name: patroni
+    tag: latest
+    source: build
+    build:
+      path: /opt/patroni-docker
+    state: present
