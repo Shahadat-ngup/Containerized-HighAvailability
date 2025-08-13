@@ -3,12 +3,12 @@
   hosts: postgres_cluster
   become: yes
   vars:
-    domain_name: "skeycloak.loseyourip.com"
-    postgres_password: "SecureKeycloakPass2024"
-    admin_password: "SecureKeycloakAdmin2024"
-    etcd_token: "etcd-cluster-patroni"
-    keepalived_vip_cidr: 23
-    interface: "enX0"
+    domain_name: "{{ lookup('env', 'DOMAIN_NAME') | default('skeycloak.loseyourip.com', true) }}"
+    postgres_password: "{{ lookup('env', 'POSTGRES_PASSWORD') }}"
+    admin_password: "{{ lookup('env', 'KC_BOOTSTRAP_ADMIN_PASSWORD') }}"
+    etcd_token: "{{ lookup('env', 'ETCD_TOKEN') | default('etcd-cluster-patroni', true) }}"
+    keepalived_vip_cidr: "{{ lookup('env', 'KEEPALIVED_VIP_CIDR') | default(23, true) }}"
+    interface: "{{ lookup('env', 'INTERFACE') | default('enX0', true) }}"
 
   pre_tasks:
     - name: Build Patroni image
@@ -106,6 +106,11 @@
         docker stop postgres-backend{{ postgres_node_id }} || true
         docker rm postgres-backend{{ postgres_node_id }} || true
       ignore_errors: yes
+
+    - name: Remove persistent PostgreSQL volume
+      shell: docker volume rm iam-backend_postgres_data || true
+      ignore_errors: yes
+
     - name: Remove any old patroni.yml config
       file:
         path: /opt/iam-backend/patroni.yml

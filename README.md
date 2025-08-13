@@ -98,8 +98,11 @@ cd Containerized-HighAvailability-master
 #### a. Initial Setup
 
 ```bash
+source docker/backend/.env
 ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-setup.yml -u <your_user> --become
 ```
+
+# check: echo $POSTGRES_PASSWORD
 
 #### b. Patch Patroni for DB Access
 
