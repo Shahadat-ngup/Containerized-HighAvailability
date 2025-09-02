@@ -1,0 +1,52 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "node"
+    static_configs:
+      - targets: ["193.136.194.103:9100", "193.136.194.104:9100"]
+
+  # node-exporter on backend nodes (optional, for system metrics)
+  - job_name: "node-backend"
+    static_configs:
+      - targets: ["172.29.65.52:9100", "172.29.65.53:9100", "172.29.65.54:9100"]
+
+  # Docker exporters on bastion nodes
+  - job_name: "docker-bastion"
+    static_configs:
+      - targets: ["193.136.194.103:9323", "193.136.194.104:9323"]
+
+  # Docker exporters on backend nodes
+  - job_name: "docker-backend"
+    static_configs:
+      - targets: ["172.29.65.52:9323", "172.29.65.53:9323", "172.29.65.54:9323"]
+
+  # cAdvisor exporters on all nodes (required for dashboard)
+  - job_name: "cadvisor"
+    static_configs:
+      - targets:
+          [
+            "193.136.194.103:9323",
+            "193.136.194.104:9323",
+            "172.29.65.52:9323",
+            "172.29.65.53:9323",
+            "172.29.65.54:9323",
+          ]
+
+  # nginx exporter on bastion nodes
+  - job_name: "nginx"
+    static_configs:
+      - targets: ["193.136.194.103:9113", "193.136.194.104:9113"]
+
+  - job_name: "patroni"
+    static_configs:
+      - targets: ["172.29.65.52:8008", "172.29.65.53:8008", "172.29.65.54:8008"]
+
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["172.29.65.52:9187", "172.29.65.53:9187", "172.29.65.54:9187"]
+
+  # Prometheus self-scrape (optional)
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["193.136.194.103:9090", "193.136.194.104:9090"]

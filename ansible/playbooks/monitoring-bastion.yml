@@ -1,0 +1,126 @@
+---
+- name: Deploy Monitoring Stack (Prometheus & Grafana) on Bastion Nodes
+  hosts: bastion
+  become: yes
+  vars:
+    monitoring_dir: /opt/monitoring
+  tasks:
+    - name: Find node_exporter PID
+      shell: "pgrep -f node_exporter || true"
+      register: node_exporter_pid
+      changed_when: false
+
+    - name: Pull cAdvisor image
+      shell: docker pull gcr.io/cadvisor/cadvisor
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    - name: Start Node Exporter (host metrics)
+      shell: |
+        docker rm -f node-exporter || true
+        docker run -d -p 9100:9100 --name node-exporter --restart unless-stopped \
+          -v /:/host:ro,rslave prom/node-exporter --path.rootfs=/host
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    - name: Start cAdvisor (Docker metrics)
+      shell: |
+        docker rm -f cadvisor || true
+        docker run -d --name=cadvisor -p 9323:8080 \
+          --volume=/:/rootfs:ro \
+          --volume=/var/run:/var/run:rw \
+          --volume=/sys:/sys:ro \
+          --volume=/var/lib/docker/:/var/lib/docker:ro \
+          gcr.io/cadvisor/cadvisor
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    - name: Start Keepalived exporter (bastion nodes)
+      shell: |
+        docker rm -f keepalived-exporter || true
+        docker run -d -p 9165:9165 --name keepalived-exporter --restart unless-stopped mehdy/keepalived-exporter
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    - name: Start nginx exporter (bastion nodes)
+      shell: |
+        docker rm -f nginx-exporter || true
+        docker run -d -p 9113:9113 --name nginx-exporter --restart unless-stopped nginx/nginx-prometheus-exporter
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    # NOTE: For Postgres and Keycloak exporters, add similar tasks in backend node playbooks
+    # Example for Postgres exporter (backend nodes):
+    # docker run -d -p 9187:9187 --name postgres-exporter --restart unless-stopped -e DATA_SOURCE_NAME='postgresql://user:password@localhost:5432/postgres?sslmode=disable' quay.io/prometheuscommunity/postgres-exporter
+    # Example for Keycloak exporter: see Keycloak documentation for enabling Prometheus metrics
+    - name: Install Docker and Docker Compose
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+        state: present
+        update_cache: yes
+
+    - name: Remove old monitoring configs
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ monitoring_dir }}/docker-compose.yml"
+        - "{{ monitoring_dir }}/prometheus.yml"
+
+    - name: Create monitoring directory
+      file:
+        path: "{{ monitoring_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Copy monitoring docker-compose.yml
+      copy:
+        src: ../../monitoring/docker-compose.yml
+        dest: "{{ monitoring_dir }}/docker-compose.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    - name: Copy prometheus.yml config
+      copy:
+        src: ../../monitoring/prometheus.yml
+        dest: "{{ monitoring_dir }}/prometheus.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    - name: Start monitoring stack
+      shell: |
+        cd {{ monitoring_dir }}
+        docker compose up -d
+      args:
+        chdir: "{{ monitoring_dir }}"
+      register: monitoring_result
+
+    - name: Show monitoring deployment result
+      debug:
+        var: monitoring_result
+
+    - name: Ensure Prometheus and Grafana containers are running
+      shell: |
+        docker ps --filter "name=prometheus" --filter "name=grafana"
+      register: monitoring_containers
+
+    - name: Display running monitoring containers
+      debug:
+        var: monitoring_containers.stdout
+
+    - name: Restart Prometheus container
+      shell: docker restart prometheus
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes

@@ -1,0 +1,53 @@
+---
+- name: Deploy Monitoring Exporters on Backend Nodes
+  hosts: postgres_cluster
+  become: yes
+  vars:
+    monitoring_dir: /opt/monitoring
+  tasks:
+    - name: Create monitoring directory
+      file:
+        path: "{{ monitoring_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+    - name: Pull Postgres exporter image
+      shell: docker pull quay.io/prometheuscommunity/postgres-exporter
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    - name: Start Postgres exporter
+      shell: |
+        docker rm -f postgres-exporter || true
+        docker run -d -p 9187:9187 --name postgres-exporter --restart unless-stopped \
+          -e DATA_SOURCE_NAME="postgresql://{{ POSTGRES_USER | default('keycloak') }}:{{ POSTGRES_PASSWORD }}@localhost:5432/{{ POSTGRES_DB | default('keycloak') }}?sslmode=disable" \
+          quay.io/prometheuscommunity/postgres-exporter
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    - name: Pull cAdvisor image
+      shell: docker pull gcr.io/cadvisor/cadvisor
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    - name: Start cAdvisor (Docker metrics)
+      shell: |
+        docker rm -f cadvisor || true
+        docker run -d --name=cadvisor -p 9323:8080 \
+          --volume=/:/rootfs:ro \
+          --volume=/var/run:/var/run:rw \
+          --volume=/sys:/sys:ro \
+          --volume=/var/lib/docker/:/var/lib/docker:ro \
+          gcr.io/cadvisor/cadvisor
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    # Patroni exposes metrics at :8008/metrics (already running)
+    # Keycloak: Enable metrics in Keycloak config or use a sidecar exporter
+    # etcd: Metrics usually available at :2379/metrics or :2380/metrics
+    # Add scrape configs in prometheus.yml as needed

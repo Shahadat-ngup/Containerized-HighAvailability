@@ -36,6 +36,28 @@
         state: present
         update_cache: yes
 
+    - name: Deploy nginx health check script for keepalived
+      template:
+        src: ../templates/check_nginx.sh.j2
+        dest: /etc/keepalived/check_nginx.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Ensure check_nginx.sh is executable
+      file:
+        path: /etc/keepalived/check_nginx.sh
+        mode: "0755"
+        owner: root
+        group: root
+        state: file
+
+    - name: Ensure check_nginx.sh is owned by root
+      ansible.builtin.command:
+        cmd: chown root:root /etc/keepalived/check_nginx.sh
+      become: yes
+      changed_when: false
+
     - name: Template keepalived config for public VIP
       template:
         src: "../templates/keepalived.conf.j2"
