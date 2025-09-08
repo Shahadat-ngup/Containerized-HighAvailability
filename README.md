@@ -1,10 +1,23 @@
-# Containerized High Availability Keycloak Stack
+# Containerized High Availability Keycloak Stack - Deployment Guide
 
-# Debugging commands:
+This guide provides step-by-step instructions to replicate, deploy, and operate the full high-availability Keycloak stack using this repository.
 
-# ansible postgres_cluster -i ansible/inventory/hosts -u shahadat --become -m shell -a "docker ps -a"
+---
 
-## Architecture Overview
+## 1. Prerequisites & Environment
+
+- **Host OS:** Windows 10/11
+- **Linux Subsystem:** WSL2 (Ubuntu 22.04 recommended)
+- **Docker:** Docker Desktop for Windows (with WSL2 integration enabled)
+- **Ansible:** Installed in WSL Ubuntu (`sudo apt install ansible`)
+- **Other tools:** `curl`, `docker-compose`, `keepalived`, `postgresql-client`
+- **SSH Key Requirement:**
+  - Your **Windows user's public SSH key** (e.g., `C:\Users\<YourUser>\.ssh\id_ed25519.pub`) **must be present in the `~/.ssh/authorized_keys` file of all remote backend and bastion machines**. This is required for Ansible to connect and automate deployment.
+  - Test SSH connectivity from WSL2 to each remote node before proceeding.
+
+---
+
+## 2. Architecture Overview
 
 - **Backend Nodes (backend1, backend2, backend3):**
   - Patroni (HA PostgreSQL)
@@ -16,19 +29,9 @@
 - **VIP DB:** All Keycloak nodes use a PostgreSQL VIP for HA DB access.
 - **Secrets:** SSL certificates and vault for secure access.
 
-## Recommended Environment ( Tested Environment)
+---
 
-- **Host OS:** Windows 10/11
-- **Linux Subsystem:** WSL2 (Ubuntu 22.04 recommended)
-- **Resources per backend node:**
-  - CPU: 2+ cores
-  - RAM: 8GB+
-  - Disk: 30GB+ free
-- **Docker:** Docker Desktop for Windows (WSL2 integration enabled)
-- **Ansible:** Installed in WSL Ubuntu (`sudo apt install ansible`)
-- **Other tools:** `curl`, `docker-compose`, `keepalived`, `postgresql-client`
-
-## Directory Structure
+## 3. Directory Structure
 
 ```
 Containerized-HighAvailability-master/
@@ -69,73 +72,108 @@ Containerized-HighAvailability-master/
 └── README.md
 ```
 
-## How to Replicate
+---
 
-### 1. Prepare Machines
+## 4. Step-by-Step Deployment
 
-- **Backend nodes:** 3 Linux VMs in private subnets
-- **Bastion node:** 2 Linux VM in public subnets
+### 4.1. Prepare Remote Machines
 
-### 2. Clone the Repository
+- **Backend nodes:** 3 Linux VMs (private subnet recommended)
+- **Bastion nodes:** 2 Linux VMs (public subnet recommended)
+- **Ensure your Windows SSH public key is in `~/.ssh/authorized_keys` on all remote nodes.**
+- **Test SSH:**
+  ```bash
+  ssh <remote_user>@<backend1_ip>
+  ssh <remote_user>@<bastion1_ip>
+  # Repeat for all nodes
+  ```
+
+### 4.2. Clone the Repository
 
 ```bash
 git clone https://github.com/Shahadat-ngup/Containerized-HighAvailability.git
 cd Containerized-HighAvailability-master
 ```
 
-### 3. Configure Inventory
+### 4.3. Configure Inventory and Variables
 
 - Edit `ansible/inventory/hosts` to match your node IPs and hostnames.
-- Set up `group_vars` and `host_vars` for each backend node.
+- Edit or create `ansible/inventory/host_vars/<hostname>.yml` for each node with correct variables (see examples in repo).
 
-### 4. Prepare Secrets
+### 4.4. Prepare Secrets
 
 - Place SSL certificates in `secrets/.lego/certificates/`.
 - Ensure `vault.yaml` and other secrets are present.
 
-### 5. Build and Deploy Backend Cluster
+### 4.5. Build and Deploy Backend Cluster
 
 #### a. Initial Setup
 
 ```bash
 source docker/backend/.env
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-setup.yml -u <your_user> --become
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-setup.yml -u <remote_user> --become
 ```
-
-# check: echo $POSTGRES_PASSWORD
 
 #### b. Patch Patroni for DB Access
 
 ```bash
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/patch_pg_hba.yml -u <your_user> --become
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/patch_pg_hba.yml -u <remote_user> --become
 ```
 
 #### c. Post-Deployment (Keycloak, Health, DB Creation)
 
 ```bash
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-post.yml -u <your_user> --become
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-post.yml -u <remote_user> --become
 ```
 
-### 6. Deploy Bastions (Nginx Proxy)
+### 4.6. Deploy Bastions (Nginx Proxy)
 
 ```bash
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/bastion.yml -u <your_user> --become
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/bastion.yml -u <remote_user> --become
 ```
 
-### 7. Access Keycloak
+### 4.7. Access Keycloak
 
 - **URL:** https://skeycloak.loseyourip.com/admin/
 - **Admin User:** admin
-- **Admin Password:** SecureKeycloakAdmin2024
+- **Admin Password:** (see your .env or deployment output)
 
-## Troubleshooting
+---
 
-- Use `docker ps -a` and `docker logs <container>` to check container status.
+## 5. Troubleshooting & Tips
+
+- Use `docker ps -a` and `docker logs <container>` to check container status on any node.
 - If Keycloak containers are stuck in "Created" state, rerun the post-deployment playbook.
-- Health check endpoint for Keycloak is `/q/health` (not `/health/ready`).
-
-## Notes
-
-- All playbooks are designed to be idempotent and can be re-run safely.
-- The project is tested on WSL2 Ubuntu 22.04 with Docker Desktop for Windows.
+- Health check endpoint for Keycloak is `/q/health`.
+- All playbooks are idempotent and can be safely re-run.
 - For production, use dedicated Linux VMs or cloud instances.
+
+---
+
+## 6. Security & Best Practices
+
+- **SSH Keys:** Only allow your public key for Ansible automation. Remove after deployment if not needed.
+- **Secrets:** Never commit real secrets or private keys to version control.
+- **SSL:** Use valid certificates for production. Self-signed is fine for testing.
+- **Firewall:** Restrict access to only required ports (e.g., 443 for Keycloak, 22 for SSH).
+
+---
+
+## 7. Useful Debugging Commands
+
+```bash
+# List all containers on a backend node
+ansible postgres_cluster -i ansible/inventory/hosts -u <remote_user> --become -m shell -a "docker ps -a"
+
+# Check logs for a specific container
+ansible backend1 -i ansible/inventory/hosts -u <remote_user> --become -m shell -a "docker logs patroni-backend1 --tail 50"
+
+# Restart Prometheus after config change
+ansible bastion -i ansible/inventory/hosts -u <remote_user> --become -m shell -a "cd /opt/monitoring && docker restart prometheus"
+```
+
+---
+
+## 8. Contact & Support
+
+For questions, issues, or contributions, please open an issue on the GitHub repository or contact the maintainer.
