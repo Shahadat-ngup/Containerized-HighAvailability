@@ -84,8 +84,11 @@ services:
 
       # Hostname configuration for correct asset and URL generation
       - KC_HOSTNAME=skeycloak.loseyourip.com
+      - KC_HOSTNAME_URL=https://skeycloak.loseyourip.com
+      - KC_HOSTNAME_ADMIN_URL=https://skeycloak.loseyourip.com
       - KC_HOSTNAME_STRICT=false
       - KC_HOSTNAME_STRICT_HTTPS=false
+      - KC_HOSTNAME_STRICT_BACKCHANNEL=false
 
       # Health check endpoint
       - KC_HEALTH_ENABLED=true

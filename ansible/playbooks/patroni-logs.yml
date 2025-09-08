@@ -1,0 +1,73 @@
+---
+- name: Configure Patroni/PostgreSQL Container Logs for Grafana Loki
+  hosts: postgres_cluster
+  become: yes
+  vars:
+    postgres_log_dir: /var/log/postgresql
+    patroni_log_dir: /var/log/patroni
+    monitoring_dir: /opt/monitoring
+  tasks:
+    - name: Create PostgreSQL log directory on host
+      file:
+        path: "{{ postgres_log_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Create Patroni log directory on host
+      file:
+        path: "{{ patroni_log_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Check if patroni container is running
+      shell: docker ps --filter "name=patroni" --format "table {% raw %}{{.Names}}{% endraw %}"
+      register: patroni_container_check
+      changed_when: false
+
+    - name: Check if etcd container is running
+      shell: docker ps --filter "name=etcd" --format "table {% raw %}{{.Names}}{% endraw %}"
+      register: etcd_container_check
+      changed_when: false
+
+    - name: Create logrotate configuration for PostgreSQL container logs
+      copy:
+        content: |
+          {{ postgres_log_dir }}/*.log {
+              daily
+              missingok
+              rotate 30
+              compress
+              delaycompress
+              notifempty
+              create 0644 {{ ansible_user }} {{ ansible_user }}
+              copytruncate
+          }
+        dest: /etc/logrotate.d/postgresql-container-loki
+        mode: "0644"
+
+    - name: Create logrotate configuration for Patroni container logs
+      copy:
+        content: |
+          {{ patroni_log_dir }}/*.log {
+              daily
+              missingok
+              rotate 30
+              compress
+              delaycompress
+              notifempty
+              create 0644 {{ ansible_user }} {{ ansible_user }}
+              copytruncate
+          }
+        dest: /etc/logrotate.d/patroni-container-loki
+        mode: "0644"
+
+    - name: Display container status for PostgreSQL/Patroni
+      debug:
+        msg:
+          - "Patroni containers: {{ patroni_container_check.stdout }}"
+          - "etcd containers: {{ etcd_container_check.stdout }}"
+          - "Container logs will be collected by Promtail via Docker log driver"

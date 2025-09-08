@@ -1,0 +1,77 @@
+---
+- name: Configure Keycloak Container Logs for Grafana Loki
+  hosts: postgres_cluster
+  become: yes
+  vars:
+    monitoring_dir: /opt/monitoring
+    backend_docker_dir: /opt/backend
+    keycloak_log_dir: /var/log/keycloak
+    source_docker_dir: ../../docker/backend
+  tasks:
+    - name: Create keycloak log directory on host
+      file:
+        path: "{{ keycloak_log_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Create backend docker directory
+      file:
+        path: "{{ backend_docker_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Copy backend docker-compose.yml to deployment directory
+      copy:
+        src: "{{ source_docker_dir }}/docker-compose.yml"
+        dest: "{{ backend_docker_dir }}/docker-compose.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+        backup: yes
+
+    - name: Check if keycloak container is running
+      shell: docker ps --filter "name=keycloak" --format "table {% raw %}{{.Names}}{% endraw %}"
+      register: keycloak_container_check
+      changed_when: false
+
+    - name: Configure Docker daemon for better log management
+      copy:
+        content: |
+          {
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "100m",
+              "max-file": "3",
+              "labels": "service,environment"
+            }
+          }
+        dest: /etc/docker/daemon.json
+        backup: yes
+        mode: "0644"
+      notify: restart docker
+
+    - name: Create logrotate configuration for keycloak container logs
+      copy:
+        content: |
+          {{ keycloak_log_dir }}/*.log {
+              daily
+              missingok
+              rotate 30
+              compress
+              delaycompress
+              notifempty
+              create 0644 {{ ansible_user }} {{ ansible_user }}
+              copytruncate
+          }
+        dest: /etc/logrotate.d/keycloak-container-loki
+        mode: "0644"
+
+  handlers:
+    - name: restart docker
+      systemd:
+        name: docker
+        state: restarted

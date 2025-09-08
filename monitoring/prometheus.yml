@@ -45,8 +45,3 @@ scrape_configs:
   - job_name: "postgres"
     static_configs:
       - targets: ["172.29.65.52:9187", "172.29.65.53:9187", "172.29.65.54:9187"]
-
-  # Prometheus self-scrape (optional)
-  - job_name: "prometheus"
-    static_configs:
-      - targets: ["193.136.194.103:9090", "193.136.194.104:9090"]

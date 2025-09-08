@@ -12,6 +12,7 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: "0755"
+
     - name: Pull Postgres exporter image
       shell: docker pull quay.io/prometheuscommunity/postgres-exporter
       args:
@@ -43,6 +44,33 @@
           --volume=/sys:/sys:ro \
           --volume=/var/lib/docker/:/var/lib/docker:ro \
           gcr.io/cadvisor/cadvisor
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    # Additional Loki/Promtail tasks for log collection
+    - name: Copy Promtail backend config
+      copy:
+        src: ../../monitoring/promtail-backend-config.yml
+        dest: "{{ monitoring_dir }}/promtail-config.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    - name: Pull Promtail image
+      shell: docker pull grafana/promtail:latest
+      args:
+        chdir: "{{ monitoring_dir }}"
+      ignore_errors: yes
+
+    - name: Start Promtail (Log collection)
+      shell: |
+        docker rm -f promtail || true
+        docker run -d --name=promtail -p 9080:9080 --restart unless-stopped \
+          --volume=/var/log:/var/log:ro \
+          --volume=/var/lib/docker/containers:/var/lib/docker/containers:ro \
+          --volume={{ monitoring_dir }}/promtail-config.yml:/etc/promtail/config.yml \
+          grafana/promtail:latest -config.file=/etc/promtail/config.yml
       args:
         chdir: "{{ monitoring_dir }}"
       ignore_errors: yes

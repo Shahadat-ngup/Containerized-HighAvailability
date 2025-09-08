@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 # Ensure the latest security patches are applied
 RUN apt-get clean
@@ -27,7 +27,7 @@ ENV LC_ALL=en_US.UTF-8
 
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir patroni[etcd]==3.2.1 psycopg[binary]
+    pip install --no-cache-dir patroni[etcd]==3.2.1 psycopg[binary] cdiff
 
 
 # Ensure postgres group and user exist, set permissions

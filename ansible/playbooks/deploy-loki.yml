@@ -1,0 +1,147 @@
+---
+- name: Deploy Loki and Promtail on bastion nodes
+  import_playbook: monitoring-bastion.yml
+
+- name: Deploy Promtail on backend nodes
+  import_playbook: monitoring-backend.yml
+
+- name: Configure Nginx logs for Loki
+  import_playbook: nginx-logs.yml
+
+- name: Configure Keycloak logs for Loki
+  import_playbook: keycloak-logs.yml
+
+- name: Configure Patroni/PostgreSQL logs for Loki
+  import_playbook: patroni-logs.yml
+
+- name: Verify Loki deployment
+  hosts: bastion
+  tasks:
+    - name: Check if Loki container is running
+      shell: docker ps --filter "name=loki" --format "table {% raw %}{{.Names}}{% endraw %}"
+      register: loki_container_check
+      changed_when: false
+
+    - name: Wait for Loki to be ready
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:3100/metrics"
+        method: GET
+        status_code: 200
+      register: loki_health
+      until: loki_health.status == 200
+      retries: 30
+      delay: 10
+      when: loki_container_check.stdout | length > 0
+
+    - name: Check if Promtail container is running
+      shell: docker ps --filter "name=promtail" --format "table {% raw %}{{.Names}}{% endraw %}"
+      register: promtail_container_check
+      changed_when: false
+
+    - name: Wait for Promtail to be ready
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:9080/metrics"
+        method: GET
+        status_code: 200
+      register: promtail_health
+      until: promtail_health.status == 200
+      retries: 30
+      delay: 10
+      when: promtail_container_check.stdout | length > 0
+
+    - name: Display Loki deployment status
+      debug:
+        msg:
+          - "Loki containers: {{ loki_container_check.stdout }}"
+          - "Promtail containers: {{ promtail_container_check.stdout }}"
+          - "Loki is ready at: http://{{ ansible_default_ipv4.address }}:3100"
+
+- name: Configure Grafana Loki Data Source
+  hosts: bastion
+  tasks:
+    - name: Wait for Grafana to be ready
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:3000/api/health"
+        method: GET
+        status_code: 200
+      register: grafana_health
+      until: grafana_health.status == 200
+      retries: 30
+      delay: 10
+
+    - name: Add Loki data source to Grafana
+      uri:
+        url: "http://{{ ansible_default_ipv4.address }}:3000/api/datasources"
+        method: POST
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+          Authorization: "Basic {{ ('admin:SecureGrafanaAdmin2024') | b64encode }}"
+        body:
+          name: "Loki"
+          type: "loki"
+          url: "http://127.0.0.1:3100"
+          access: "proxy"
+          isDefault: false
+          jsonData:
+            maxLines: 1000
+          basicAuth: true
+          basicAuthUser: "prometheus_admin"
+          secureJsonData:
+            basicAuthPassword: "SecurePrometheus2024"
+        status_code: [200, 409] # 409 if data source already exists
+      register: loki_datasource
+      failed_when: false
+
+    - name: Reset Grafana admin password if authentication failed
+      block:
+        - name: Stop Grafana container
+          shell: cd /opt/monitoring && docker-compose stop grafana
+
+        - name: Remove Grafana data volume to reset password
+          shell: cd /opt/monitoring && docker volume rm monitoring_grafana-data || true
+
+        - name: Start Grafana container with fresh data
+          shell: cd /opt/monitoring && docker-compose up -d grafana
+
+        - name: Wait for Grafana to be ready after reset
+          uri:
+            url: "http://{{ ansible_default_ipv4.address }}:3000/api/health"
+            method: GET
+            status_code: 200
+          register: grafana_health_reset
+          until: grafana_health_reset.status == 200
+          retries: 30
+          delay: 10
+
+        - name: Add Loki data source to Grafana after reset
+          uri:
+            url: "http://{{ ansible_default_ipv4.address }}:3000/api/datasources"
+            method: POST
+            body_format: json
+            headers:
+              Content-Type: "application/json"
+              Authorization: "Basic {{ ('admin:SecureGrafanaAdmin2024') | b64encode }}"
+            body:
+              name: "Loki"
+              type: "loki"
+              url: "http://127.0.0.1:3100"
+              access: "proxy"
+              isDefault: false
+              jsonData:
+                maxLines: 1000
+              basicAuth: true
+              basicAuthUser: "prometheus_admin"
+              secureJsonData:
+                basicAuthPassword: "SecurePrometheus2024"
+            status_code: [200, 409]
+          register: loki_datasource_retry
+      when: loki_datasource.status == 401
+
+    - name: Display Grafana Loki data source status
+      debug:
+        msg:
+          - "✅ Loki data source configured in Grafana"
+          - "🌐 Access Grafana: http://{{ ansible_default_ipv4.address }}:3000"
+          - "🔑 Grafana credentials: admin:SecureGrafanaAdmin2024"
+          - "📊 Loki logs available in Grafana Explore section"

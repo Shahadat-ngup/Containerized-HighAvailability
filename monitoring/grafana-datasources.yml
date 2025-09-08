@@ -1,0 +1,29 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090 # Connect to prometheus container directly
+    isDefault: true
+    editable: true
+    basicAuth: false # No authentication needed for direct connection
+    jsonData:
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: 2.40.0
+      cacheLevel: "High"
+    secureJsonData: {}
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100 # Connect to loki container directly
+    isDefault: false
+    editable: true
+    basicAuth: false # No authentication needed for direct connection
+    jsonData:
+      maxLines: 1000
+      manageAlerts: true
+    secureJsonData: {}

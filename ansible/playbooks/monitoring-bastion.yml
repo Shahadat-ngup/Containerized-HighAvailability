@@ -98,6 +98,22 @@
         group: "{{ ansible_user }}"
         mode: "0644"
 
+    - name: Copy loki-config.yml
+      copy:
+        src: ../../monitoring/loki-config.yml
+        dest: "{{ monitoring_dir }}/loki-config.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    - name: Copy promtail-config.yml
+      copy:
+        src: ../../monitoring/promtail-config.yml
+        dest: "{{ monitoring_dir }}/promtail-config.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
     - name: Start monitoring stack
       shell: |
         cd {{ monitoring_dir }}
@@ -110,9 +126,9 @@
       debug:
         var: monitoring_result
 
-    - name: Ensure Prometheus and Grafana containers are running
+    - name: Ensure Prometheus, Grafana, Loki and Promtail containers are running
       shell: |
-        docker ps --filter "name=prometheus" --filter "name=grafana"
+        docker ps --filter "name=prometheus" --filter "name=grafana" --filter "name=loki" --filter "name=promtail"
       register: monitoring_containers
 
     - name: Display running monitoring containers

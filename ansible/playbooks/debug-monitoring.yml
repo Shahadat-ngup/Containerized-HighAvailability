@@ -1,0 +1,48 @@
+---
+- name: Debug Monitoring Services
+  hosts: bastion
+  become: yes
+
+  tasks:
+    - name: Check if nginx container is running
+      shell: docker ps | grep nginx
+      register: nginx_status
+      failed_when: false
+
+    - name: Check nginx container logs
+      shell: docker logs nginx 2>&1 | tail -20
+      register: nginx_logs
+      failed_when: false
+
+    - name: Check if monitoring containers are running
+      shell: cd /opt/monitoring && docker-compose ps
+      register: monitoring_status
+      failed_when: false
+
+    - name: Check what's listening on ports 9090, 3000, 3100
+      shell: netstat -tlnp | grep -E ":(9090|3000|3100|9091)"
+      register: port_status
+      failed_when: false
+
+    - name: Check nginx configuration syntax
+      shell: docker exec nginx nginx -t
+      register: nginx_config_test
+      failed_when: false
+
+    - name: Display diagnostic information
+      debug:
+        msg:
+          - "=== NGINX STATUS ==="
+          - "{{ nginx_status.stdout_lines | default(['No nginx container found']) }}"
+          - ""
+          - "=== NGINX LOGS ==="
+          - "{{ nginx_logs.stdout_lines | default(['No nginx logs']) }}"
+          - ""
+          - "=== MONITORING CONTAINERS ==="
+          - "{{ monitoring_status.stdout_lines | default(['No monitoring containers']) }}"
+          - ""
+          - "=== PORT STATUS ==="
+          - "{{ port_status.stdout_lines | default(['No ports listening']) }}"
+          - ""
+          - "=== NGINX CONFIG TEST ==="
+          - "{{ nginx_config_test.stdout_lines | default(['Config test failed']) }}"

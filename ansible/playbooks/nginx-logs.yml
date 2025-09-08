@@ -1,0 +1,120 @@
+---
+- name: Configure Nginx Container Logs for Grafana Loki
+  hosts: bastion
+  become: yes
+  vars:
+    monitoring_dir: /opt/monitoring
+    nginx_log_dir: /var/log/nginx
+    bastion_docker_dir: /opt/bastion
+    source_docker_dir: ../../docker/bastion
+  tasks:
+    - name: Create nginx log directory on host
+      file:
+        path: "{{ nginx_log_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Create bastion docker directory
+      file:
+        path: "{{ bastion_docker_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Copy bastion docker-compose.yml to deployment directory
+      copy:
+        src: "{{ source_docker_dir }}/docker-compose.yml"
+        dest: "{{ bastion_docker_dir }}/docker-compose.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+        backup: yes
+
+    - name: Copy bastion nginx.conf to deployment directory
+      copy:
+        src: "{{ source_docker_dir }}/nginx.conf"
+        dest: "{{ bastion_docker_dir }}/nginx.conf"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+        backup: yes
+
+    - name: Check if nginx container is running
+      shell: docker ps --filter "name=nginx" --format "table {% raw %}{{.Names}}{% endraw %}"
+      register: nginx_container_check
+      changed_when: false
+
+    - name: Add log volume to bastion docker-compose.yml
+      lineinfile:
+        path: "{{ bastion_docker_dir }}/docker-compose.yml"
+        line: "      - {{ nginx_log_dir }}:/var/log/nginx"
+        insertafter: "^\\s*volumes:"
+        backup: yes
+
+    - name: Configure nginx.conf for JSON logging (if nginx.conf exists)
+      blockinfile:
+        path: "{{ bastion_docker_dir }}/nginx.conf"
+        block: |
+          # JSON log format for Loki
+          http {
+              log_format json_combined escape=json '{'
+                          '"time_iso8601": "$time_iso8601", '
+                          '"remote_addr": "$remote_addr", '
+                          '"remote_user": "$remote_user", '
+                          '"request": "$request", '
+                          '"status": "$status", '
+                          '"body_bytes_sent": "$body_bytes_sent", '
+                          '"request_time": "$request_time", '
+                          '"http_referer": "$http_referer", '
+                          '"http_user_agent": "$http_user_agent", '
+                          '"http_x_forwarded_for": "$http_x_forwarded_for", '
+                          '"http_host": "$http_host", '
+                          '"server_name": "$server_name", '
+                          '"upstream_addr": "$upstream_addr", '
+                          '"upstream_response_time": "$upstream_response_time"'
+                          '}';
+              
+              access_log /var/log/nginx/access.log json_combined;
+              error_log /var/log/nginx/error.log warn;
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - Loki JSON logging"
+        create: yes
+        mode: "0644"
+      ignore_errors: yes
+
+    - name: Test nginx configuration in container (if running)
+      shell: |
+        docker exec nginx nginx -t
+      register: nginx_test
+      failed_when: false
+      when: nginx_container_check.stdout | length > 0
+
+    - name: Restart nginx container to apply new configuration
+      shell: |
+        cd {{ bastion_docker_dir }}
+        docker-compose restart nginx
+      when:
+        - nginx_container_check.stdout | length > 0
+        - nginx_test is defined
+        - nginx_test.rc == 0
+      ignore_errors: yes
+
+    - name: Create logrotate configuration for nginx container logs
+      copy:
+        content: |
+          {{ nginx_log_dir }}/*.log {
+              daily
+              missingok
+              rotate 30
+              compress
+              delaycompress
+              notifempty
+              create 0644 {{ ansible_user }} {{ ansible_user }}
+              postrotate
+                  docker exec nginx nginx -s reload 2>/dev/null || true
+              endscript
+          }
+        dest: /etc/logrotate.d/nginx-container-loki
+        mode: "0644"
