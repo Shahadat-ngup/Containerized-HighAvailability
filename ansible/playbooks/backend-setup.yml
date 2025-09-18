@@ -3,7 +3,7 @@
   hosts: postgres_cluster
   become: yes
   vars:
-    domain_name: "{{ lookup('env', 'DOMAIN_NAME') | default('skeycloak.loseyourip.com', true) }}"
+    domain_name: "{{ lookup('env', 'DOMAIN_NAME') | default('keycloak.ipb.pt', true) }}"
     postgres_password: "{{ lookup('env', 'POSTGRES_PASSWORD') }}"
     admin_password: "{{ lookup('env', 'KC_BOOTSTRAP_ADMIN_PASSWORD') }}"
     etcd_token: "{{ lookup('env', 'ETCD_TOKEN') | default('etcd-cluster-patroni', true) }}"
@@ -43,10 +43,10 @@
         group: root
         mode: "{{ item.mode }}"
       loop:
-        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/fullchain.pem"
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/{{ domain_name }}.pem"
           dest: /etc/ssl/certs/{{ domain_name }}.pem
           mode: "0644"
-        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/_.skeycloak.loseyourip.com.key"
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/{{ domain_name }}.key"
           dest: /etc/ssl/private/{{ domain_name }}.key
           mode: "0600"
       ignore_errors: yes

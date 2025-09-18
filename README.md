@@ -57,8 +57,12 @@ Containerized-HighAvailability-master/
 │       └── nginx.conf
 ├── secrets/
 │   ├── .lego/certificates/
-│   │   ├── fullchain.pem
-│   │   └── _.skeycloak.loseyourip.com.key
+│   │   ├── keycloak.ipb.pt.pem
+│   │   ├── keycloak.ipb.pt.key
+│   │   ├── grafana1.ccom.ipb.pt.pem
+│   │   ├── grafana1.ccom.ipb.pt.key
+│   │   ├── grafana2.ccom.ipb.pt.pem
+│   │   └── grafana2.ccom.ipb.pt.key
 │   ├── vault.yaml
 │   └── request_cert.sh
 ├── patroni/
@@ -134,9 +138,52 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/bastion.yml -u <re
 
 ### 4.7. Access Keycloak
 
-- **URL:** https://skeycloak.loseyourip.com/admin/
-- **Admin User:** admin
-- **Admin Password:** (see your .env or deployment output)
+- URL: https://keycloak.ipb.pt/admin/
+- Admin User: admin
+- Admin Password: (see your backend `.env` or deployment output)
+
+Note: The bastion nginx sets the correct X-Forwarded-\* headers and forces HTTPS for Keycloak. The Keycloak container is configured with:
+
+- KC_HOSTNAME=keycloak.ipb.pt
+- KC_HOSTNAME_URL=https://keycloak.ipb.pt
+- KC_HOSTNAME_ADMIN_URL=https://keycloak.ipb.pt
+
+### 4.8. Deploy Monitoring Stack (Prometheus, Loki, Promtail, Grafana)
+
+1. Create `monitoring.env` (NOT committed this file):
+
+```
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=seeYourMonitoring.env
+```
+
+2. Deploy monitoring services on bastions (Prometheus, Loki, Promtail, Grafana):
+
+```
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/monitoring-bastion.yml --become
+```
+
+This copies `monitoring.env` to `/opt/monitoring/.env` on each bastion and starts the stack with `docker compose --env-file .env`.
+
+3. Configure Grafana to use Loki as a data source:
+
+```
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/deploy-loki.yml --become
+```
+
+4. Access Grafana over HTTPS via bastions:
+
+- Bastion1: https://grafana1.ccom.ipb.pt
+- Bastion2: https://grafana2.ccom.ipb.pt
+
+Grafana listens on 127.0.0.1:3000; nginx on each bastion proxies 443 vhosts to local Grafana with the correct certificates.
+
+Optional:
+
+- Reset Grafana admin (no data wipe):
+  - `ansible-playbook -i ansible/inventory/hosts ansible/playbooks/grafana-admin-reset.yml --limit bastion2 --become`
+- Hard reset Grafana on bastion2 (delete data volume):
+  - `ansible-playbook -i ansible/inventory/hosts ansible/playbooks/grafana-wipe-bastion2.yml --become`
 
 ---
 

@@ -5,6 +5,13 @@
   vars:
     monitoring_dir: /opt/monitoring
   tasks:
+    - name: Create .env for monitoring stack
+      copy:
+        src: ../../monitoring.env
+        dest: "{{ monitoring_dir }}/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0600"
     - name: Find node_exporter PID
       shell: "pgrep -f node_exporter || true"
       register: node_exporter_pid
@@ -117,7 +124,7 @@
     - name: Start monitoring stack
       shell: |
         cd {{ monitoring_dir }}
-        docker compose up -d
+        docker compose --env-file .env up -d
       args:
         chdir: "{{ monitoring_dir }}"
       register: monitoring_result

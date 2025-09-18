@@ -24,7 +24,7 @@
 
     - name: Wait for Loki to be ready
       uri:
-        url: "http://{{ ansible_default_ipv4.address }}:3100/metrics"
+        url: "http://127.0.0.1:3100/metrics"
         method: GET
         status_code: 200
       register: loki_health
@@ -40,7 +40,7 @@
 
     - name: Wait for Promtail to be ready
       uri:
-        url: "http://{{ ansible_default_ipv4.address }}:9080/metrics"
+        url: "http://127.0.0.1:9080/metrics"
         method: GET
         status_code: 200
       register: promtail_health
@@ -59,9 +59,17 @@
 - name: Configure Grafana Loki Data Source
   hosts: bastion
   tasks:
+    - name: Load Grafana credentials from .env
+      shell: |
+        set -e
+        export $(grep -E '^(GRAFANA_ADMIN_USER|GRAFANA_ADMIN_PASSWORD)=' /opt/monitoring/.env | xargs)
+        echo -n "$GRAFANA_ADMIN_USER:$GRAFANA_ADMIN_PASSWORD" | base64
+      register: grafana_basic_b64
+      changed_when: false
+
     - name: Wait for Grafana to be ready
       uri:
-        url: "http://{{ ansible_default_ipv4.address }}:3000/api/health"
+        url: "http://127.0.0.1:3000/api/health"
         method: GET
         status_code: 200
       register: grafana_health
@@ -76,7 +84,7 @@
         body_format: json
         headers:
           Content-Type: "application/json"
-          Authorization: "Basic {{ ('admin:SecureGrafanaAdmin2024') | b64encode }}"
+          Authorization: "Basic {{ grafana_basic_b64.stdout }}"
         body:
           name: "Loki"
           type: "loki"
@@ -106,7 +114,7 @@
 
         - name: Wait for Grafana to be ready after reset
           uri:
-            url: "http://{{ ansible_default_ipv4.address }}:3000/api/health"
+            url: "http://127.0.0.1:3000/api/health"
             method: GET
             status_code: 200
           register: grafana_health_reset
@@ -116,12 +124,12 @@
 
         - name: Add Loki data source to Grafana after reset
           uri:
-            url: "http://{{ ansible_default_ipv4.address }}:3000/api/datasources"
+            url: "http://127.0.0.1:3000/api/datasources"
             method: POST
             body_format: json
             headers:
               Content-Type: "application/json"
-              Authorization: "Basic {{ ('admin:SecureGrafanaAdmin2024') | b64encode }}"
+              Authorization: "Basic {{ grafana_basic_b64.stdout }}"
             body:
               name: "Loki"
               type: "loki"

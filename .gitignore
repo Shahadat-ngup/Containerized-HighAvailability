@@ -3,6 +3,8 @@ secrets/
 .env
 backend1.env
 .env.*
+monitoring.env
+.env.*
 *.key
 *.crt
 *.pem

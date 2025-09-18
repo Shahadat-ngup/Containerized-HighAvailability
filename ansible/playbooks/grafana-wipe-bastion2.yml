@@ -1,0 +1,41 @@
+---
+- name: Hard reset Grafana on bastion2 (wipe data volume)
+  hosts: bastion2
+  become: yes
+  vars:
+    monitoring_dir: /opt/monitoring
+  tasks:
+    - name: Stop Grafana container (ignore errors)
+      shell: |
+        docker rm -f grafana || true
+
+    - name: Remove Grafana data volume on this host
+      shell: |
+        docker volume rm monitoring_grafana-data || true
+
+    - name: Ensure monitoring .env exists
+      copy:
+        src: ../../monitoring.env
+        dest: "{{ monitoring_dir }}/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0600"
+
+    - name: Start only Grafana container with env
+      shell: |
+        cd {{ monitoring_dir }}
+        docker compose --env-file .env up -d grafana
+
+    - name: Wait for Grafana after wipe
+      uri:
+        url: http://127.0.0.1:3000/api/health
+        method: GET
+        status_code: 200
+      register: grafana_health
+      until: grafana_health.status == 200
+      retries: 20
+      delay: 3
+
+    - name: Show login info
+      debug:
+        msg: "Grafana on bastion2 reset. Login with user/pass in {{ monitoring_dir }}/.env"

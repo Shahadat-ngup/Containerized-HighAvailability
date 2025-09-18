@@ -4,7 +4,7 @@
   hosts: bastion
   become: yes
   vars:
-    domain_name: "skeycloak.loseyourip.com"
+    domain_name: "keycloak.ipb.pt"
     keepalived_vip_cidr: 27
     vip: "193.136.194.100"
     interface: "enX0"
@@ -87,7 +87,7 @@
         - /opt/iam-bastion
         - /etc/ssl/private
 
-    - name: Copy SSL certificates
+    - name: Copy Keycloak SSL certificates
       copy:
         src: "{{ item.src }}"
         dest: "{{ item.dest }}"
@@ -95,11 +95,33 @@
         group: root
         mode: "{{ item.mode }}"
       loop:
-        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/fullchain.pem"
-          dest: /etc/ssl/certs/skeycloak.loseyourip.com.pem
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/keycloak.ipb.pt.pem"
+          dest: /etc/ssl/certs/keycloak.ipb.pt.pem
           mode: "0644"
-        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/_.skeycloak.loseyourip.com.key"
-          dest: /etc/ssl/private/skeycloak.loseyourip.com.key
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/keycloak.ipb.pt.key"
+          dest: /etc/ssl/private/keycloak.ipb.pt.key
+          mode: "0600"
+      ignore_errors: yes
+
+    - name: Copy Grafana SSL certificates (both) to all bastions
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/grafana1.ccom.ipb.pt.pem"
+          dest: /etc/ssl/certs/grafana1.ccom.ipb.pt.pem
+          mode: "0644"
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/grafana1.ccom.ipb.pt.key"
+          dest: /etc/ssl/private/grafana1.ccom.ipb.pt.key
+          mode: "0600"
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/grafana2.ccom.ipb.pt.pem"
+          dest: /etc/ssl/certs/grafana2.ccom.ipb.pt.pem
+          mode: "0644"
+        - src: "{{ playbook_dir }}/../../secrets/.lego/certificates/grafana2.ccom.ipb.pt.key"
+          dest: /etc/ssl/private/grafana2.ccom.ipb.pt.key
           mode: "0600"
       ignore_errors: yes
 
