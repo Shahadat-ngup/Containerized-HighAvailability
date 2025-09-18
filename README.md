@@ -220,7 +220,7 @@ ansible bastion -i ansible/inventory/hosts -u <remote_user> --become -m shell -a
 ```
 
 ---
-
+## Note: Change all the secrets, like passwords, usernames later and different from the env files
 ## 8. Contact & Support
 
 For questions, issues, or contributions, please open an issue on the GitHub repository or contact the maintainer.
