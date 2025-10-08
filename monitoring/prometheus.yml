@@ -45,3 +45,9 @@ scrape_configs:
   - job_name: "postgres"
     static_configs:
       - targets: ["172.29.65.52:9187", "172.29.65.53:9187", "172.29.65.54:9187"]
+
+  # Keycloak metrics (exposed on the management interface, default port 9000)
+  - job_name: "keycloak"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["172.29.65.52:9000", "172.29.65.53:9000", "172.29.65.54:9000"]

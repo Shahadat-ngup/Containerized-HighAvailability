@@ -107,7 +107,7 @@ cd Containerized-HighAvailability-master
 ### 4.4. Prepare Secrets
 
 - Place SSL certificates in `secrets/.lego/certificates/`.
-- There is also a guideline to genere certs using Lego Dynu.
+- There is also a guideline to generate certs using Lego Dynu.
 
 ### 4.5. Build and Deploy Backend Cluster
 
