@@ -9,6 +9,14 @@
     etcd_token: "{{ lookup('env', 'ETCD_TOKEN') | default('etcd-cluster-patroni', true) }}"
     keepalived_vip_cidr: "{{ lookup('env', 'KEEPALIVED_VIP_CIDR') | default(23, true) }}"
     interface: "{{ lookup('env', 'INTERFACE') | default('enX0', true) }}"
+    # Keepalived defaults for DB VIP
+    vrrp_instance_name: "DBVIP"
+    keepalived_vrid: 51
+    keepalived_vip: "172.29.65.100"
+    enable_patroni_tracking: true
+    enable_nginx_tracking: false
+    enable_rise_fall: false
+    enable_log_detail: false
 
   pre_tasks:
     - name: Build Patroni image
@@ -74,8 +82,17 @@
     - name: Install keepalived for DB VIP
       apt:
         name: keepalived
-        state: present
+        state: latest
         update_cache: yes
+      tags: [keepalived]
+    - name: Deploy Patroni leader check script for keepalived
+      template:
+        src: "../templates/check_patroni_leader.sh.j2"
+        dest: /etc/keepalived/check_patroni_leader.sh
+        owner: root
+        group: root
+        mode: "0755"
+      tags: [keepalived]
     - name: Template keepalived config for DB VIP
       template:
         src: "../templates/keepalived.conf.j2"
@@ -83,15 +100,13 @@
         owner: root
         group: root
         mode: "0644"
-      vars:
-        vrrp_instance_name: "DBVIP"
-        keepalived_vrid: 51
-        keepalived_vip: "172.29.65.100"
+      tags: [keepalived]
     - name: Restart keepalived for DB VIP
       systemd:
         name: keepalived
         state: restarted
         enabled: yes
+      tags: [keepalived]
     - name: Create backend deployment directory
       file:
         path: /opt/iam-backend

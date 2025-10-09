@@ -1,7 +1,33 @@
 global_defs {
     enable_script_security
-    log_file /var/log/keepalived/keepalived.log
 }
+
+{#
+  Define health-check scripts at the top level. Older keepalived versions
+  do not accept vrrp_script blocks inside vrrp_instance.
+#}
+{% if enable_patroni_tracking | default(false) %}
+vrrp_script chk_patroni_leader {
+    script "/etc/keepalived/check_patroni_leader.sh"
+    interval {{ patroni_script_interval | default(5) }}
+    # Positive weight boosts priority when script succeeds (i.e., on Patroni leader)
+    weight {{ patroni_script_weight | default(200) }}
+    user root
+{% if enable_rise_fall | default(false) %}
+    fall {{ patroni_script_fall | default(2) }}
+    rise {{ patroni_script_rise | default(1) }}
+{% endif %}
+}
+{% elif enable_nginx_tracking | default(true) %}
+vrrp_script chk_nginx {
+    script "/etc/keepalived/check_nginx.sh"
+    interval {{ nginx_script_interval | default(2) }}
+{% if enable_rise_fall | default(false) %}
+    fall {{ nginx_script_fall | default(2) }}
+    rise {{ nginx_script_rise | default(1) }}
+{% endif %}
+}
+{% endif %}
 vrrp_instance {{ vrrp_instance_name }} {
     state {{ keepalived_state | default('BACKUP') }}
     interface {{ keepalived_interface | default(interface) | default(ansible_default_ipv4.interface) }}
@@ -15,13 +41,16 @@ vrrp_instance {{ vrrp_instance_name }} {
     virtual_ipaddress {
         {{ keepalived_vip }}/{{ keepalived_vip_cidr }}
     }
-    vrrp_script chk_nginx {
-        script "/etc/keepalived/check_nginx.sh"
-        interval 2
-        weight -60
-    }
+{% if enable_patroni_tracking | default(false) %}
     track_script {
-        chk_nginx
+        chk_patroni_leader
     }
+{% elif enable_nginx_tracking | default(true) %}
+    track_script {
+        chk_nginx weight {{ nginx_script_weight | default(-60) }}
+    }
+{% endif %}
+{% if enable_log_detail | default(false) %}
     log_detail
+{% endif %}
 }

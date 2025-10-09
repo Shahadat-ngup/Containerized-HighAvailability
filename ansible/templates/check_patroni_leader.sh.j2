@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Patroni leader health script for Keepalived
+# Exit 0 if this node is current Patroni leader; else exit 1
+
+set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+API="http://127.0.0.1:8008/patroni"
+JSON=$(/usr/bin/curl -s --max-time 2 "$API" || true)
+[ -z "$JSON" ] && exit 1
+
+# Determine local role
+if command -v jq >/dev/null 2>&1; then
+  ROLE=$(echo "$JSON" | jq -r '.role' | /usr/bin/head -n1 || true)
+else
+  ROLE=$(echo "$JSON" | /bin/grep -Eo '"role"\s*:\s*"[^"]+"' | /usr/bin/head -n1 | /bin/sed -n 's/.*"role"\s*:\s*"\([^"]\+\)".*/\1/p' || true)
+fi
+[ -z "${ROLE:-}" ] && exit 1
+
+# Write a tiny debug breadcrumb for diagnostics (best-effort)
+DBG_LINE="ts=$(date -u +%FT%TZ) role=${ROLE}"
+{
+  echo "$DBG_LINE" >> /var/run/keepalived_leader_check.out
+} >/dev/null 2>&1 || true
+
+if [ "$ROLE" = "leader" ] || [ "$ROLE" = "master" ]; then
+  exit 0
+else
+  exit 1
+fi

@@ -1,0 +1,68 @@
+---
+- name: Enable Patroni-aware VIP failover on backend nodes
+  hosts: postgres_cluster
+  become: yes
+  vars:
+    vrrp_instance_name: "DBVIP"
+    keepalived_vrid: 51
+    keepalived_vip: "172.29.65.100"
+    keepalived_vip_cidr: "{{ lookup('env', 'KEEPALIVED_VIP_CIDR') | default(23, true) }}"
+    enable_patroni_tracking: true
+    enable_nginx_tracking: false
+    interface: "{{ lookup('env', 'INTERFACE') | default('enX0', true) }}"
+  tasks:
+    - name: Ensure keepalived installed (latest)
+      apt:
+        name: keepalived
+        state: latest
+        update_cache: yes
+      tags: [keepalived]
+
+    - name: Deploy Patroni leader check script
+      template:
+        src: "../templates/check_patroni_leader.sh.j2"
+        dest: /etc/keepalived/check_patroni_leader.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Template keepalived config with Patroni tracking
+      template:
+        src: "../templates/keepalived.conf.j2"
+        dest: /etc/keepalived/keepalived.conf
+        owner: root
+        group: root
+        mode: "0644"
+        backup: yes
+      vars:
+        enable_patroni_tracking: true
+        enable_nginx_tracking: false
+
+    - name: Reload keepalived
+      systemd:
+        name: keepalived
+        state: restarted
+        enabled: yes
+
+    - name: Wait briefly for VIP decision
+      pause:
+        seconds: 5
+
+    - name: Display VIP location
+      shell: ip -4 addr show {{ interface }} | grep -w {{ keepalived_vip }} || echo 'VIP not on this node'
+      register: vip_out
+      changed_when: false
+
+    - name: Debug VIP presence per node
+      debug:
+        msg: "{{ inventory_hostname }} -> {{ vip_out.stdout | default('none') }}"
+
+    - name: Show Patroni role
+      shell: curl -s http://127.0.0.1:8008/cluster | jq -r '.members[] | select(.role=="leader") | .name'
+      register: patroni_leader
+      changed_when: false
+
+    - name: Summary (only once)
+      run_once: true
+      debug:
+        msg: "Current Patroni leader: {{ patroni_leader.stdout }} (VIP should be on its host)"
