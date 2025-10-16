@@ -122,10 +122,6 @@ Expected: One of backend2/backend3 becomes new leader within ~15–30s.
 Validation:
 
 ```bash
-# With watch + jq:
-watch -n5 "$ANS_BASE postgres_cluster -m shell -a 'curl -s http://127.0.0.1:8008/cluster | jq -r \".members[] | .name + \" \" + .role\"'" | head
-# Fallback without watch:
-# for i in {1..10}; do $ANS_BASE postgres_cluster -m shell -a "curl -s http://127.0.0.1:8008/cluster | jq -r '.members[] | .name + \" \" + .role'"; sleep 5; done
 # Issue token repeatedly during failover window
 for i in {1..20}; do curl -sk -d 'client_id=admin-cli' -d 'username=admin' -d 'password=Passw0rd21' -d 'grant_type=password' \
   https://keycloak.ipb.pt/realms/master/protocol/openid-connect/token -o /dev/null -w "%{http_code} "; sleep 2; done

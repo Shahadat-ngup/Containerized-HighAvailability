@@ -56,7 +56,9 @@
     - name: Start nginx exporter (bastion nodes)
       shell: |
         docker rm -f nginx-exporter || true
-        docker run -d -p 9113:9113 --name nginx-exporter --restart unless-stopped nginx/nginx-prometheus-exporter
+        docker run -d -p 9113:9113 --name nginx-exporter --restart unless-stopped \
+          nginx/nginx-prometheus-exporter \
+          -nginx.scrape-uri=http://172.17.0.1:8080/stub_status
       args:
         chdir: "{{ monitoring_dir }}"
       ignore_errors: yes
