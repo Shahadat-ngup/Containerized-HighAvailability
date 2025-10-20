@@ -69,6 +69,7 @@
         docker run -d --name=promtail -p 9080:9080 --restart unless-stopped \
           --volume=/var/log:/var/log:ro \
           --volume=/var/lib/docker/containers:/var/lib/docker/containers:ro \
+          --volume=/var/run/docker.sock:/var/run/docker.sock:ro \
           --volume={{ monitoring_dir }}/promtail-config.yml:/etc/promtail/config.yml \
           grafana/promtail:latest -config.file=/etc/promtail/config.yml
       args:
