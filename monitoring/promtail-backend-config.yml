@@ -17,23 +17,23 @@ scrape_configs:
         refresh_interval: 5s
     relabel_configs:
       # Use container name as a label
-      - source_labels: ['__meta_docker_container_name']
-        target_label: 'container_name'
-        regex: '/(.*)'
-        replacement: '$1'
+      - source_labels: ["__meta_docker_container_name"]
+        target_label: "container_name"
+        regex: "/(.*)"
+        replacement: "$1"
       # Use container ID
-      - source_labels: ['__meta_docker_container_id']
-        target_label: 'container_id'
+      - source_labels: ["__meta_docker_container_id"]
+        target_label: "container_id"
       # Set the log path
-      - source_labels: ['__meta_docker_container_id']
-        target_label: '__path__'
-        replacement: '/var/lib/docker/containers/$1/*-json.log'
+      - source_labels: ["__meta_docker_container_id"]
+        target_label: "__path__"
+        replacement: "/var/lib/docker/containers/$1/*-json.log"
       # Add job label
-      - replacement: 'docker'
-        target_label: 'job'
+      - replacement: "docker"
+        target_label: "job"
       # Add node label
-      - replacement: 'backend'
-        target_label: 'node'
+      - replacement: "backend"
+        target_label: "node"
     pipeline_stages:
       # Parse Docker JSON log format
       - json:
