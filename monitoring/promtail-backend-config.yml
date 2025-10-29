@@ -52,7 +52,7 @@ scrape_configs:
       - output:
           source: log
 
-  # System logs
+  # System logs (host-level, not containerized)
   - job_name: syslog
     static_configs:
       - targets:
@@ -71,59 +71,64 @@ scrape_configs:
           hostname:
           service:
 
-  # Keycloak logs
-  - job_name: keycloak
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: keycloak
-          service: keycloak
-          __path__: /opt/keycloak/data/log/*.log
-    pipeline_stages:
-      - regex:
-          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3})\s+(?P<level>\S+)\s+\[(?P<thread>[^\]]+)\]\s+(?P<logger>\S+)\s+(?P<message>.*)$'
-      - timestamp:
-          format: 2006-01-02 15:04:05,000
-          source: timestamp
-      - labels:
-          level:
-          logger:
+  # NOTE: The following static log paths are commented out because Keycloak,
+  # PostgreSQL/Patroni, and etcd run as containers. Their logs are already
+  # collected via Docker service discovery (docker_sd_configs) above, which
+  # reads from /var/lib/docker/containers/<container-id>/*-json.log
 
-  # PostgreSQL/Patroni logs
-  - job_name: patroni
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: patroni
-          service: postgresql
-          __path__: /var/log/postgresql/*.log
-    pipeline_stages:
-      - regex:
-          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})\s+(?P<timezone>\S+)\s+\[(?P<pid>\d+)\]\s+(?P<level>\S+):\s+(?P<message>.*)$'
-      - timestamp:
-          format: 2006-01-02 15:04:05.000
-          source: timestamp
-      - labels:
-          level:
-          pid:
+  # # Keycloak logs (DISABLED - collected via Docker SD)
+  # - job_name: keycloak
+  #   static_configs:
+  #     - targets:
+  #         - localhost
+  #       labels:
+  #         job: keycloak
+  #         service: keycloak
+  #         __path__: /opt/keycloak/data/log/*.log
+  #   pipeline_stages:
+  #     - regex:
+  #         expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3})\s+(?P<level>\S+)\s+\[(?P<thread>[^\]]+)\]\s+(?P<logger>\S+)\s+(?P<message>.*)$'
+  #     - timestamp:
+  #         format: 2006-01-02 15:04:05,000
+  #         source: timestamp
+  #     - labels:
+  #         level:
+  #         logger:
 
-  # etcd logs
-  - job_name: etcd
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: etcd
-          service: etcd
-          __path__: /var/log/etcd/*.log
-    pipeline_stages:
-      - regex:
-          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{6})\s+(?P<level>\S+)\s+\|\s+(?P<component>\S+):\s+(?P<message>.*)$'
-      - timestamp:
-          format: 2006-01-02 15:04:05.000000
-          source: timestamp
-      - labels:
-          level:
-          component:
+  # # PostgreSQL/Patroni logs (DISABLED - collected via Docker SD)
+  # - job_name: patroni
+  #   static_configs:
+  #     - targets:
+  #         - localhost
+  #       labels:
+  #         job: patroni
+  #         service: postgresql
+  #         __path__: /var/log/postgresql/*.log
+  #   pipeline_stages:
+  #     - regex:
+  #         expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})\s+(?P<timezone>\S+)\s+\[(?P<pid>\d+)\]\s+(?P<level>\S+):\s+(?P<message>.*)$'
+  #     - timestamp:
+  #         format: 2006-01-02 15:04:05.000
+  #         source: timestamp
+  #     - labels:
+  #         level:
+  #         pid:
+
+  # # etcd logs (DISABLED - collected via Docker SD)
+  # - job_name: etcd
+  #   static_configs:
+  #     - targets:
+  #         - localhost
+  #       labels:
+  #         job: etcd
+  #         service: etcd
+  #         __path__: /var/log/etcd/*.log
+  #   pipeline_stages:
+  #     - regex:
+  #         expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{6})\s+(?P<level>\S+)\s+\|\s+(?P<component>\S+):\s+(?P<message>.*)$'
+  #     - timestamp:
+  #         format: 2006-01-02 15:04:05.000000
+  #         source: timestamp
+  #     - labels:
+  #         level:
+  #         component:
