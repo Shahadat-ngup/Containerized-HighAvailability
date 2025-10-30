@@ -17,3 +17,5 @@ __pycache__/
 # Ignore system files
 .DS_Store
 Thumbs.db
+# Ignore my paper drafts
+paper_corrected.tex

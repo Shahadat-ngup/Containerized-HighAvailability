@@ -1,0 +1,111 @@
+---
+- name: Find Patroni leader and grant PostgreSQL monitoring permissions
+  hosts: postgres_cluster
+  become: true
+  vars:
+    postgres_password: "{{ lookup('env', 'POSTGRES_PASSWORD') }}"
+  tasks:
+    - name: Get Patroni leader name from cluster
+      shell: |
+        curl -s http://127.0.0.1:8008/cluster | grep -o '"leader":"[^"]*"' | cut -d'"' -f4
+      register: patroni_leader
+      run_once: true
+      delegate_to: backend1
+
+    - name: Check if this node is the leader
+      shell: |
+        curl -s http://127.0.0.1:8008/cluster | jq -r '.members[] | select(.role=="leader") | .name'
+      register: leader_name
+      ignore_errors: yes
+
+    - name: Display node roles
+      debug:
+        msg: "{{ inventory_hostname }} - Patroni Name: patroni-{{ hostvars[inventory_hostname]['postgres_node_id'] }} - Role: {{ 'LEADER' if 'patroni-' + (hostvars[inventory_hostname]['postgres_node_id']|string) == leader_name.stdout else 'REPLICA' }}"
+
+    - name: Set fact for leader node
+      set_fact:
+        is_leader: "{{ 'patroni-' + (hostvars[inventory_hostname]['postgres_node_id']|string) == leader_name.stdout }}"
+
+- name: Grant monitoring permissions on leader node
+  hosts: postgres_cluster
+  become: true
+  vars:
+    postgres_password: "{{ lookup('env', 'POSTGRES_PASSWORD') }}"
+  tasks:
+    - name: Grant pg_monitor role to keycloak user (on leader only)
+      shell: |
+        docker exec patroni-backend{{ hostvars[inventory_hostname]['postgres_node_id'] }} psql -U postgres -c "GRANT pg_monitor TO keycloak;"
+      register: grant_monitor
+      when: hostvars[inventory_hostname]['is_leader'] | default(false)
+      ignore_errors: yes
+
+    - name: Grant execute permissions on monitoring functions (on leader only)
+      shell: |
+        docker exec patroni-backend{{ hostvars[inventory_hostname]['postgres_node_id'] }} psql -U postgres -c "
+        GRANT EXECUTE ON FUNCTION pg_ls_waldir() TO keycloak;
+        GRANT EXECUTE ON FUNCTION pg_ls_dir(text) TO keycloak;
+        GRANT EXECUTE ON FUNCTION pg_stat_file(text) TO keycloak;
+        "
+      register: grant_functions
+      when: hostvars[inventory_hostname]['is_leader'] | default(false)
+      ignore_errors: yes
+
+    - name: Display grant results
+      debug:
+        msg:
+          - "Node: {{ inventory_hostname }}"
+          - "Is Leader: {{ hostvars[inventory_hostname]['is_leader'] | default(false) }}"
+          - "pg_monitor role: {{ grant_monitor.stdout | default('Not executed - not leader') }}"
+          - "Function grants: {{ grant_functions.stdout | default('Not executed - not leader') }}"
+      when: hostvars[inventory_hostname]['is_leader'] | default(false)
+
+    - name: Verify keycloak user permissions (on leader only)
+      shell: |
+        docker exec patroni-backend{{ hostvars[inventory_hostname]['postgres_node_id'] }} psql -U postgres -c "
+        SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb 
+        FROM pg_roles 
+        WHERE rolname = 'keycloak';
+        "
+      register: verify_perms
+      when: hostvars[inventory_hostname]['is_leader'] | default(false)
+
+    - name: Display keycloak user permissions
+      debug:
+        var: verify_perms.stdout_lines
+      when: hostvars[inventory_hostname]['is_leader'] | default(false)
+
+- name: Restart postgres-exporter containers to apply new permissions
+  hosts: postgres_cluster
+  become: true
+  vars:
+    monitoring_dir: /opt/monitoring
+  tasks:
+    - name: Create postgres_exporter config file if not exists (suppresses warning)
+      copy:
+        dest: "{{ monitoring_dir }}/postgres_exporter.yml"
+        content: |
+          # Minimal postgres_exporter configuration
+          # Using default collectors - no custom queries defined
+          ---
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+        force: no
+
+    - name: Restart postgres-exporter container
+      shell: docker restart postgres-exporter
+      register: restart_result
+
+    - name: Wait for postgres-exporter to start
+      pause:
+        seconds: 5
+
+    - name: Check postgres-exporter logs for errors
+      shell: docker logs postgres-exporter --tail 10 | grep -E 'ERROR.*permission|WARN.*config' || echo 'No errors or warnings found'
+      register: exporter_logs
+
+    - name: Display postgres-exporter status
+      debug:
+        msg:
+          - "{{ inventory_hostname }}: postgres-exporter restarted"
+          - "Log check: {{ exporter_logs.stdout }}"

@@ -19,12 +19,25 @@
         chdir: "{{ monitoring_dir }}"
       ignore_errors: yes
 
+    - name: Create postgres_exporter config file (optional, suppresses warning)
+      copy:
+        dest: "{{ monitoring_dir }}/postgres_exporter.yml"
+        content: |
+          # Minimal postgres_exporter configuration
+          # Using default collectors - no custom queries defined
+          ---
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
     - name: Start Postgres exporter
       shell: |
         docker rm -f postgres-exporter || true
-        docker run -d -p 9187:9187 --name postgres-exporter --restart unless-stopped \
-          -e DATA_SOURCE_NAME="postgresql://{{ POSTGRES_USER | default('keycloak') }}:{{ POSTGRES_PASSWORD }}@localhost:5432/{{ POSTGRES_DB | default('keycloak') }}?sslmode=disable" \
-          quay.io/prometheuscommunity/postgres-exporter
+        docker run -d --network host --name postgres-exporter --restart unless-stopped \
+          -v {{ monitoring_dir }}/postgres_exporter.yml:/postgres_exporter.yml:ro \
+          -e DATA_SOURCE_NAME="postgresql://{{ POSTGRES_USER | default('keycloak') }}:{{ POSTGRES_PASSWORD }}@127.0.0.1:5432/{{ POSTGRES_DB | default('keycloak') }}?sslmode=disable" \
+          quay.io/prometheuscommunity/postgres-exporter \
+          --config.file=/postgres_exporter.yml
       args:
         chdir: "{{ monitoring_dir }}"
       ignore_errors: yes
