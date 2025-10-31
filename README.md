@@ -262,6 +262,38 @@ Also update or create `ansible/inventory/host_vars/<hostname>.yml` for each node
 
 ### 4.6. Build and Deploy Backend Cluster
 
+#### Understanding the 3-Step Backend Deployment Process
+
+The backend deployment requires **three sequential playbooks** due to the bootstrapping nature of Patroni PostgreSQL clusters. This is not a bug but a deliberate approach to ensure reliable cluster initialization.
+
+**Why Three Steps Are Required:**
+
+1. **Patroni Bootstrap Race Condition:**
+
+   - When `backend-setup.yml` runs `docker compose down --volumes`, it **destroys all PostgreSQL data** on all nodes
+   - All 3 backend nodes start simultaneously and race to become the Patroni leader
+   - **Only one node** (typically backend1) successfully bootstraps as the leader
+   - **Backend2 and backend3 fail** because they try to join before backend1 completes initialization
+
+2. **Missing PostgreSQL Access Control:**
+
+   - During initial bootstrap, Patroni creates `pg_hba.conf` with **restrictive defaults**
+   - **Replication entries are missing**, preventing backend2/backend3 from connecting as replicas
+   - **Keycloak connection entries are missing**, preventing the Keycloak containers from starting
+
+3. **Sequential Fix Required:**
+   - **Step 1 (`backend-setup.yml`)**: Bootstrap backend1 as leader (backend2/3 fail with "unhealthy" errors - **this is expected**)
+   - **Step 2 (`patch_pg_hba.yml`)**: Add PostgreSQL access rules to allow replication and Keycloak connections
+   - **Step 3 (`backend-post.yml`)**: Manually start Keycloak on backend2/3 now that pg_hba.conf is fixed
+
+**Expected Behavior:**
+
+- ✅ Backend1 succeeds (becomes Patroni leader, Keycloak starts)
+- ❌ Backend2/3 fail with "container patroni-backendX is unhealthy" - **THIS IS NORMAL**
+- After running all 3 playbooks, all nodes will be healthy
+
+---
+
 #### Step 1: Initial Backend Setup
 
 This deploys etcd, Patroni PostgreSQL cluster, Keycloak, and configures the database VIP with Keepalived:
@@ -285,9 +317,81 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-setup.yml
 - Configures Keepalived to manage the PostgreSQL VIP (172.29.65.100)
 - Deploys the Patroni leader detection script for VIP failover
 
-#### Step 2: Configure Patroni-aware VIP Failover
+**Expected Outcome:**
 
-You need to reconfigure the database VIP to strictly follow the Patroni leader:
+```
+backend1: ok=25   changed=8    unreachable=0    failed=0
+backend2: ok=23   changed=7    unreachable=0    failed=1    ← Expected failure
+backend3: ok=23   changed=7    unreachable=0    failed=1    ← Expected failure
+```
+
+**Error Message You'll See (Normal):**
+
+```
+Container patroni-backend2  Error
+dependency failed to start: container patroni-backend2 is unhealthy
+```
+
+**Why This Happens:**
+
+- Backend1 bootstraps successfully as Patroni leader
+- Backend2/3 try to join before pg_hba.conf is configured for replication
+- Patroni healthcheck fails → Docker marks them unhealthy → Keycloak can't start
+
+---
+
+#### Step 2: Patch PostgreSQL Access Control
+
+Configure `pg_hba.conf` to allow Keycloak and replication connections:
+
+```bash
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/patch_pg_hba.yml
+```
+
+**What this playbook does:**
+
+- Adds replication entries to pg_hba.conf: `host replication all 172.29.65.0/24 md5`
+- Adds Keycloak connection entries: `host all keycloak 172.29.65.0/24 md5`
+- Adds postgres user access: `host all postgres 172.29.65.0/24 md5`
+- Reloads PostgreSQL configuration without downtime
+- Fixes directory permissions on backend2/3 data directories
+
+**Why This Is Needed:**
+
+- Patroni creates pg_hba.conf during bootstrap with minimal access rules
+- Without these entries, replica nodes cannot authenticate for streaming replication
+- Keycloak containers cannot connect to the database
+- This step makes the cluster fully functional
+
+---
+
+#### Step 3: Post-Deployment Keycloak Setup
+
+Create the Keycloak database and manually start Keycloak on backend2/3:
+
+```bash
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-post.yml
+```
+
+**What this playbook does:**
+
+- Ensures the `keycloak` database exists on backend1
+- Manually starts Keycloak containers on backend2 and backend3 (they failed in Step 1)
+- Waits for all services to be ready (etcd, PostgreSQL, Keycloak)
+- Performs health checks on all endpoints
+- Displays service endpoint information
+
+**Expected Outcome:**
+
+- All 3 backend nodes running healthy Patroni replicas
+- All 3 Keycloak instances started and clustered via JDBC_PING
+- Database VIP (172.29.65.100) pointing to current Patroni leader
+
+---
+
+#### Step 4: Configure Patroni-aware VIP Failover (Optional)
+
+Ensure the database VIP strictly follows the Patroni leader:
 
 ```bash
 ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-keepalived-patroni.yml
@@ -298,23 +402,9 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-keepalived
 - Ensures Keepalived is configured with Patroni leader tracking
 - Deploys/updates the `check_patroni_leader.sh` health check script
 - VIP will automatically migrate to whichever node holds the Patroni leader role
-- Provides failover for database connections
+- Provides automatic failover for database connections
 
-#### Step 3: Patch PostgreSQL Access Control
-
-Configure `pg_hba.conf` to allow Keycloak and replication connections:
-
-```bash
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/patch_pg_hba.yml
-```
-
-#### Step 4: Post-Deployment Keycloak Setup
-
-Create the Keycloak database and perform health checks:
-
-```bash
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-post.yml
-```
+**Note:** This step is optional if you already configured Keepalived correctly in Step 1. Run it if you experience VIP failover issues.
 
 ### 4.7. Deploy Bastion Proxy Layer
 

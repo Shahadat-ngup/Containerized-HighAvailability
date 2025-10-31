@@ -22,6 +22,33 @@ postgresql:
       username: replicator
       password: {{ REPLICATOR_PASSWORD }}
   parameters:
+    # BEGIN ANSIBLE MANAGED PERFORMANCE TUNING
+# Connection Settings
+    max_connections: 300
+
+    # Memory Settings (optimized for 4GB RAM)
+    shared_buffers: 1GB
+    effective_cache_size: 3GB
+    work_mem: 4MB
+    maintenance_work_mem: 256MB
+
+    # Checkpoint Settings
+    checkpoint_completion_target: 0.9
+    wal_buffers: 16MB
+    min_wal_size: 1GB
+    max_wal_size: 4GB
+
+    # Query Planner
+    default_statistics_target: 100
+    random_page_cost: 1.1
+    effective_io_concurrency: 200
+
+    # Parallel Query
+    max_worker_processes: 4
+    max_parallel_workers_per_gather: 2
+    max_parallel_workers: 4
+    max_parallel_maintenance_workers: 2
+    # END ANSIBLE MANAGED PERFORMANCE TUNING
     wal_level: replica
     hot_standby: "on"
     max_wal_senders: 10
@@ -29,8 +56,6 @@ postgresql:
     wal_keep_size: 64
     archive_mode: "on"
     archive_command: 'cd .'
-    max_connections: 100
-    shared_buffers: 256MB
     log_statement: "all"
     log_connections: "on"
     log_disconnections: "on"
@@ -55,6 +80,24 @@ bootstrap:
     postgresql:
       use_pg_rewind: true
       use_slots: true
+      parameters:
+        # Performance tuning parameters (stored in etcd during bootstrap)
+        max_connections: 300
+        shared_buffers: 1GB
+        effective_cache_size: 3GB
+        work_mem: 4MB
+        maintenance_work_mem: 256MB
+        checkpoint_completion_target: 0.9
+        wal_buffers: 16MB
+        min_wal_size: 1GB
+        max_wal_size: 4GB
+        default_statistics_target: 100
+        random_page_cost: 1.1
+        effective_io_concurrency: 200
+        max_worker_processes: 4
+        max_parallel_workers_per_gather: 2
+        max_parallel_workers: 4
+        max_parallel_maintenance_workers: 2
   initdb:
     - encoding: UTF8
     - data-checksums

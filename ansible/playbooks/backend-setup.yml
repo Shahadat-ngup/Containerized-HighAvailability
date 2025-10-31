@@ -122,9 +122,9 @@
         docker rm postgres-backend{{ postgres_node_id }} || true
       ignore_errors: yes
 
-    - name: Remove persistent PostgreSQL volume
-      shell: docker volume rm iam-backend_postgres_data || true
-      ignore_errors: yes
+    #- name: Remove persistent PostgreSQL volume
+    #shell: docker volume rm iam-backend_postgres_data || true
+    #ignore_errors: yes
 
     - name: Remove any old patroni.yml config
       file:
@@ -162,6 +162,7 @@
       register: patroni_render_check
       failed_when: patroni_render_check.rc != 0
       changed_when: false
+
     - name: Start Docker services with rebuild
       shell: |
         cd /opt/iam-backend
@@ -169,6 +170,28 @@
         docker compose pull etcd-backend keycloak-backend
         docker compose up -d --build
       register: docker_result
+
+    - name: Wait for etcd to be ready
+      wait_for:
+        port: 2379
+        host: 127.0.0.1
+        delay: 5
+        timeout: 30
+      when: inventory_hostname == 'backend1'
+
+    - name: Clear old Patroni configuration from etcd after startup
+      shell: |
+        docker exec etcd-backend{{ postgres_node_id }} etcdctl --endpoints=http://127.0.0.1:2379 del --prefix /postgres
+      ignore_errors: yes
+      when: inventory_hostname == 'backend1'
+      register: etcd_clear_result
+
+    - name: Restart Patroni containers to pick up fresh config
+      shell: |
+        cd /opt/iam-backend
+        docker compose restart patroni-backend
+      when: etcd_clear_result is changed and inventory_hostname == 'backend1'
+
     - name: Show Docker compose output
       debug:
         var: docker_result
