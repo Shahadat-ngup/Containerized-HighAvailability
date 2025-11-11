@@ -287,6 +287,8 @@ dos2unix docker/backend/.env
 file docker/backend/Dockerfile
 #if exists: docker/backend/Dockerfile: ASCII text, with CRLF line terminators
 dos2unix docker/backend/Dockerfile
+dos2unix ansible/templates/*.sh.j2 2>/dev/null || true
+dos2unix secrets/request_cert.sh 2>/dev/null || true
 # re-source so exported vars are correct in your shell
 unset DOMAIN_NAME
 source docker/backend/.env
