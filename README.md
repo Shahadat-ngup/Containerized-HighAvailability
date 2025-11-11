@@ -283,7 +283,10 @@ echo -n "$DOMAIN_NAME" | sed -n l
 # install dos2unix if missing and convert the .env file to Unix line endings
 sudo apt update && sudo apt install -y dos2unix
 dos2unix docker/backend/.env
-
+# also check
+file docker/backend/Dockerfile
+#if exists: docker/backend/Dockerfile: ASCII text, with CRLF line terminators
+dos2unix docker/backend/Dockerfile
 # re-source so exported vars are correct in your shell
 unset DOMAIN_NAME
 source docker/backend/.env
