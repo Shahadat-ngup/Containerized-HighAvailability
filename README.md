@@ -306,6 +306,21 @@ source docker/backend/.env
 ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-setup.yml
 ```
 
+Note: if you previously sourced `docker/backend/.env` from Windows (CRLF endings) you may get failures where filenames include a stray carriage-return (^M) and Ansible cannot find the certificate files. If that happens, detect and fix it locally, then re-source the file:
+
+```bash
+# show non-printing chars in the current env var (look for ^M)
+echo -n "$DOMAIN_NAME" | sed -n l
+
+# install dos2unix if missing and convert the .env file to Unix line endings
+sudo apt update && sudo apt install -y dos2unix
+dos2unix docker/backend/.env
+
+# re-source so exported vars are correct in your shell
+unset DOMAIN_NAME
+source docker/backend/.env
+```
+
 **What this playbook does:**
 
 - Installs Docker, docker-compose, and Keepalived on all backend nodes
