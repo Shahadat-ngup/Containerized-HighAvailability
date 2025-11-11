@@ -3,9 +3,12 @@ name: keycloak-ha
 restapi:
   listen: 0.0.0.0:8008
   connect_address: {{ NODE_IP }}:8008
-etcd:
-  protocol: v3
-  hosts: 172.29.65.52:2379,172.29.65.53:2379,172.29.65.54:2379
+etcd3:
+  hosts:
+    - 172.29.65.52:2379
+    - 172.29.65.53:2379
+    - 172.29.65.54:2379
+  protocol: http
 postgresql:
   listen: 0.0.0.0:5432
   connect_address: {{ NODE_IP }}:5432
@@ -26,8 +29,16 @@ postgresql:
     wal_keep_size: 64
     archive_mode: "on"
     archive_command: 'cd .'
-    max_connections: 100
-    shared_buffers: 256MB
+    max_connections: 200
+    shared_buffers: 1GB
+    effective_cache_size: 3GB
+    work_mem: 16MB
+    maintenance_work_mem: 256MB
+    wal_buffers: 16MB
+    checkpoint_completion_target: 0.9
+    max_wal_size: 2GB
+    min_wal_size: 1GB
+    random_page_cost: 1.1
     log_statement: "all"
     log_connections: "on"
     log_disconnections: "on"
