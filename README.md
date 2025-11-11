@@ -279,11 +279,15 @@ Note: if you previously sourced `docker/backend/.env` from Windows (CRLF endings
 ```bash
 # show non-printing chars in the current env var (look for ^M)
 echo -n "$DOMAIN_NAME" | sed -n l
-
+# 3. Verify the fix worked
+file docker/backend/entrypoint.sh
 # install dos2unix if missing and convert the .env file to Unix line endings
 sudo apt update && sudo apt install -y dos2unix
 dos2unix docker/backend/.env
-
+dos2unix docker/backend/entrypoint.sh
+# 5. Also convert any template shell scripts
+dos2unix ansible/templates/*.sh.j2 2>/dev/null || true
+dos2unix secrets/request_cert.sh 2>/dev/null || true
 # re-source so exported vars are correct in your shell
 unset DOMAIN_NAME
 source docker/backend/.env
