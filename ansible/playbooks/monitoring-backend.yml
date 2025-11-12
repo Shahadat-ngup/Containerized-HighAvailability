@@ -35,7 +35,7 @@
         docker rm -f postgres-exporter || true
         docker run -d --network host --name postgres-exporter --restart unless-stopped \
           -v {{ monitoring_dir }}/postgres_exporter.yml:/postgres_exporter.yml:ro \
-          -e DATA_SOURCE_NAME="postgresql://{{ POSTGRES_USER | default('keycloak') }}:{{ POSTGRES_PASSWORD }}@127.0.0.1:5432/{{ POSTGRES_DB | default('keycloak') }}?sslmode=disable" \
+          -e DATA_SOURCE_NAME="postgresql://postgres_exporter:{{ POSTGRES_PASSWORD }}@127.0.0.1:5432/postgres?sslmode=disable" \
           quay.io/prometheuscommunity/postgres-exporter \
           --config.file=/postgres_exporter.yml
       args:

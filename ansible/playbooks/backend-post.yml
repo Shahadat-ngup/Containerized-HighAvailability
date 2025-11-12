@@ -3,12 +3,28 @@
   hosts: postgres_cluster
   become: yes
   tasks:
+    - name: Find Patroni leader
+      shell: curl -s http://127.0.0.1:8008/cluster | jq -r '.members[] | select(.role=="leader") | .name'
+      register: patroni_leader
+      changed_when: false
+      run_once: true
+      delegate_to: backend1
+
     - name: Ensure keycloak database exists
       shell: |
         docker exec patroni-backend1 psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'keycloak'" | grep -q 1 || \
         docker exec patroni-backend1 psql -U postgres -c "CREATE DATABASE keycloak OWNER keycloak;"
       changed_when: false
       when: inventory_hostname == 'backend1'
+
+    - name: Create postgres_exporter user with monitoring permissions
+      shell: |
+        LEADER_NODE=$(echo "{{ patroni_leader.stdout }}" | sed 's/patroni-/backend/')
+        docker exec patroni-{{ patroni_leader.stdout | replace('patroni-', 'backend') }} psql -U postgres -d postgres -tc "SELECT 1 FROM pg_roles WHERE rolname = 'postgres_exporter'" | grep -q 1 || \
+        docker exec patroni-{{ patroni_leader.stdout | replace('patroni-', 'backend') }} psql -U postgres -d postgres -c "CREATE USER postgres_exporter WITH PASSWORD '{{ POSTGRES_PASSWORD }}'; GRANT pg_monitor TO postgres_exporter; GRANT CONNECT ON DATABASE postgres TO postgres_exporter;"
+      changed_when: false
+      run_once: true
+      delegate_to: "{{ 'backend' + patroni_leader.stdout.split('-')[1] }}"
 
     - name: Start Keycloak container on backend2
       shell: docker start keycloak-backend2

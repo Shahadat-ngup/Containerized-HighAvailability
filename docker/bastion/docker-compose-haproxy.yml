@@ -1,0 +1,11 @@
+services:
+  haproxy:
+    image: haproxy:2.8-alpine
+    restart: unless-stopped
+    network_mode: "host"
+    user: root
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /etc/ssl/private:/etc/ssl/private:ro
+    command: haproxy -f /usr/local/etc/haproxy/haproxy.cfg

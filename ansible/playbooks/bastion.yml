@@ -1,6 +1,6 @@
 ---
-# Bastion playbook - Docker container approach
-- name: Deploy Bastion Hosts
+# Bastion playbook - HAProxy Docker container approach
+- name: Deploy Bastion Hosts with HAProxy
   hosts: bastion
   become: yes
   vars:
@@ -25,6 +25,10 @@
         purge: yes
       ignore_errors: yes
 
+    - name: Remove old nginx containers
+      shell: docker rm -f iam-bastion-nginx-1 nginx-exporter || true
+      ignore_errors: yes
+
     - name: Install required packages
       apt:
         name:
@@ -36,31 +40,31 @@
         state: present
         update_cache: yes
 
-    - name: Deploy nginx health check script for keepalived
+    - name: Deploy HAProxy health check script for keepalived
       template:
-        src: ../templates/check_nginx.sh.j2
-        dest: /etc/keepalived/check_nginx.sh
+        src: ../templates/check_haproxy.sh.j2
+        dest: /etc/keepalived/check_haproxy.sh
         owner: root
         group: root
         mode: "0755"
 
-    - name: Ensure check_nginx.sh is executable
+    - name: Ensure check_haproxy.sh is executable
       file:
-        path: /etc/keepalived/check_nginx.sh
+        path: /etc/keepalived/check_haproxy.sh
         mode: "0755"
         owner: root
         group: root
         state: file
 
-    - name: Ensure check_nginx.sh is owned by root
+    - name: Ensure check_haproxy.sh is owned by root
       ansible.builtin.command:
-        cmd: chown root:root /etc/keepalived/check_nginx.sh
+        cmd: chown root:root /etc/keepalived/check_haproxy.sh
       become: yes
       changed_when: false
 
-    - name: Template keepalived config for public VIP
+    - name: Template keepalived config for public VIP with HAProxy tracking
       template:
-        src: "../templates/keepalived.conf.j2"
+        src: "../templates/keepalived-haproxy.conf.j2"
         dest: /etc/keepalived/keepalived.conf
         owner: root
         group: root
@@ -69,6 +73,7 @@
         vrrp_instance_name: "PUBLICVIP"
         keepalived_vrid: 50
         keepalived_vip: "{{ vip }}" # Set your public VIP here
+        enable_haproxy_tracking: true
 
     - name: Restart keepalived for public VIP
       systemd:
@@ -125,25 +130,33 @@
           mode: "0600"
       ignore_errors: yes
 
-    - name: Copy Docker Compose configuration from repository
+    - name: Create combined SSL PEM files for HAProxy
+      shell: |
+        cat /etc/ssl/certs/{{ domain_name }}.pem /etc/ssl/private/{{ domain_name }}.key > /etc/ssl/certs/{{ domain_name }}.combined.pem
+        cat /etc/ssl/certs/grafana1.ccom.ipb.pt.pem /etc/ssl/private/grafana1.ccom.ipb.pt.key > /etc/ssl/certs/grafana1.ccom.ipb.pt.combined.pem
+        cat /etc/ssl/certs/grafana2.ccom.ipb.pt.pem /etc/ssl/private/grafana2.ccom.ipb.pt.key > /etc/ssl/certs/grafana2.ccom.ipb.pt.combined.pem
+        chmod 644 /etc/ssl/certs/*.combined.pem
+      args:
+        creates: /etc/ssl/certs/{{ domain_name }}.combined.pem
+
+    - name: Template HAProxy configuration
+      template:
+        src: "../templates/haproxy.cfg.j2"
+        dest: /opt/iam-bastion/haproxy.cfg
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    - name: Copy HAProxy Docker Compose configuration
       copy:
-        src: "{{ playbook_dir }}/../../docker/bastion/docker-compose.yml"
+        src: "{{ playbook_dir }}/../../docker/bastion/docker-compose-haproxy.yml"
         dest: /opt/iam-bastion/docker-compose.yml
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: "0644"
         remote_src: no
 
-    - name: Copy nginx configuration from repository
-      copy:
-        src: "{{ playbook_dir }}/../../docker/bastion/nginx.conf"
-        dest: /opt/iam-bastion/nginx.conf
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: "0644"
-        remote_src: no
-
-    - name: Start Docker nginx service
+    - name: Start Docker HAProxy service
       shell: |
         cd /opt/iam-bastion
         docker compose down || true
@@ -154,36 +167,41 @@
       debug:
         var: docker_result
 
-    - name: Wait for nginx container to be ready
+    - name: Wait for HAProxy HTTP to be ready
       wait_for:
         port: 80
         host: "{{ ansible_default_ipv4.address }}"
         delay: 10
         timeout: 60
 
-    - name: Wait for nginx HTTPS to be ready
+    - name: Wait for HAProxy HTTPS to be ready
       wait_for:
         port: 443
         host: "{{ ansible_default_ipv4.address }}"
         delay: 10
         timeout: 60
 
-    - name: Test nginx container health
+    - name: Test HAProxy container health
       uri:
         url: "http://{{ ansible_default_ipv4.address }}:80/"
         method: GET
         timeout: 10
-      register: nginx_health
+        follow_redirects: none
+      register: haproxy_health
       ignore_errors: yes
 
-    - name: Display nginx health result
+    - name: Display HAProxy health result
       debug:
-        msg: "Nginx container: {{ 'HEALTHY' if nginx_health.status == 200 or nginx_health.status == 301 or nginx_health.status == 302 else 'UNHEALTHY' }}"
+        msg: "HAProxy container: {{ 'HEALTHY' if haproxy_health.status == 301 or haproxy_health.status == 302 else 'UNHEALTHY' }}"
 
     - name: Display service endpoints
       debug:
         msg: |
           Bastion services deployed on {{ ansible_hostname }} ({{ ansible_default_ipv4.address }}):
-          - HTTP: http://{{ ansible_default_ipv4.address }}:80
+          - HTTP: http://{{ ansible_default_ipv4.address }}:80 (redirects to HTTPS)
           - HTTPS: https://{{ ansible_default_ipv4.address }}:443
-          - Public Domain: https://{{ domain_name }}
+          - Keycloak: https://{{ domain_name }}
+          - Grafana1: https://grafana1.ccom.ipb.pt
+          - Grafana2: https://grafana2.ccom.ipb.pt
+          - Prometheus: http://{{ ansible_default_ipv4.address }}:9090 (with auth)
+          - Loki: http://{{ ansible_default_ipv4.address }}:3101 (with auth)

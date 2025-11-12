@@ -5,9 +5,19 @@
   vars:
     monitoring_dir: /opt/monitoring
   tasks:
-    - name: Create .env for monitoring stack
+    - name: Create monitoring directory
+      file:
+        path: "{{ monitoring_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Create .env for monitoring stack from environment variables
       copy:
-        src: ../../monitoring.env
+        content: |
+          GRAFANA_ADMIN_USER={{ lookup('env', 'GRAFANA_ADMIN_USER') | default('admin', true) }}
+          GRAFANA_ADMIN_PASSWORD={{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') | default('admin', true) }}
         dest: "{{ monitoring_dir }}/.env"
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
@@ -53,12 +63,16 @@
         chdir: "{{ monitoring_dir }}"
       ignore_errors: yes
 
-    - name: Start nginx exporter (bastion nodes)
+    - name: Remove old nginx-exporter container
+      shell: docker rm -f nginx-exporter || true
+      ignore_errors: yes
+
+    - name: Start HAProxy exporter (bastion nodes)
       shell: |
-        docker rm -f nginx-exporter || true
-        docker run -d -p 9113:9113 --name nginx-exporter --restart unless-stopped \
-          nginx/nginx-prometheus-exporter \
-          -nginx.scrape-uri=http://172.17.0.1:8080/stub_status
+        docker rm -f haproxy-exporter || true
+        docker run -d -p 9101:9101 --name haproxy-exporter --restart unless-stopped \
+          quay.io/prometheus/haproxy-exporter:latest \
+          --haproxy.scrape-uri="http://host.docker.internal:8404/stats;csv"
       args:
         chdir: "{{ monitoring_dir }}"
       ignore_errors: yes
@@ -82,14 +96,6 @@
       loop:
         - "{{ monitoring_dir }}/docker-compose.yml"
         - "{{ monitoring_dir }}/prometheus.yml"
-
-    - name: Create monitoring directory
-      file:
-        path: "{{ monitoring_dir }}"
-        state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: "0755"
 
     - name: Copy monitoring docker-compose.yml
       copy:

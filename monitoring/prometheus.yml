@@ -33,10 +33,10 @@ scrape_configs:
             "172.29.65.54:9323",
           ]
 
-  # nginx exporter on bastion nodes
-  - job_name: "nginx"
+  # HAProxy exporter on bastion nodes
+  - job_name: "haproxy"
     static_configs:
-      - targets: ["193.136.194.103:9113", "193.136.194.104:9113"]
+      - targets: ["193.136.194.103:9101", "193.136.194.104:9101"]
 
   - job_name: "patroni"
     static_configs:

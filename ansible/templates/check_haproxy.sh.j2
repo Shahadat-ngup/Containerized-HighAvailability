@@ -1,0 +1,23 @@
+#!/bin/bash
+# Health check script for HAProxy
+
+# Check if HAProxy process is running
+if ! pgrep -x haproxy > /dev/null; then
+    echo "HAProxy process not running"
+    exit 1
+fi
+
+# Check if HAProxy is listening on port 443
+if ! timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/443" 2>/dev/null; then
+    echo "HAProxy not listening on port 443"
+    exit 1
+fi
+
+# Check Keycloak backend health through HAProxy
+if ! curl -sf -k https://127.0.0.1/health/ready -o /dev/null; then
+    echo "Keycloak backend health check failed"
+    exit 1
+fi
+
+echo "HAProxy health check passed"
+exit 0

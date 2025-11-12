@@ -1,0 +1,131 @@
+global
+    log stdout format raw local0 info
+    maxconn 4096
+    # SSL/TLS configuration
+    ssl-default-bind-ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305
+    ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
+    # Stats socket for Prometheus scraping
+    stats socket /var/run/haproxy.sock mode 660 level admin
+    stats timeout 30s
+
+defaults
+    log     global
+    mode    http
+    option  httplog
+    option  dontlognull
+    option  http-server-close
+    option  forwardfor except 127.0.0.0/8
+    option  redispatch
+    retries 3
+    timeout connect 5000
+    timeout client  300000
+    timeout server  300000
+    timeout http-keep-alive 10s
+    timeout http-request 10s
+
+# Stats page for monitoring
+listen stats
+    bind :8404
+    stats enable
+    stats uri /stats
+    stats refresh 30s
+    stats show-legends
+    stats show-node
+
+# Frontend for HTTP -> HTTPS redirect
+frontend http_front
+    bind :80
+    mode http
+    redirect scheme https code 301 if !{ ssl_fc }
+
+# Frontend for HTTPS - SNI routing by hostname
+frontend https_front
+    bind :443 ssl crt /etc/ssl/certs/{{ domain_name }}.combined.pem crt /etc/ssl/certs/grafana1.ccom.ipb.pt.combined.pem crt /etc/ssl/certs/grafana2.ccom.ipb.pt.combined.pem
+    mode http
+    
+    # Set proper X-Forwarded headers
+    http-request set-header X-Real-IP %[src]
+    http-request set-header X-Forwarded-For %[src]
+    http-request set-header X-Forwarded-Proto https
+    http-request set-header X-Forwarded-Host %[req.hdr(Host)]
+    http-request set-header X-Forwarded-Port 443
+    http-request set-header X-Forwarded-Server %[req.hdr(Host)]
+    http-request set-header X-Forwarded-Ssl on
+    
+    # Route based on SNI hostname
+    acl is_keycloak hdr(host) -i {{ domain_name }}
+    acl is_grafana1 hdr(host) -i grafana1.ccom.ipb.pt
+    acl is_grafana2 hdr(host) -i grafana2.ccom.ipb.pt
+    
+    use_backend keycloak_backend if is_keycloak
+    use_backend grafana_backend if is_grafana1
+    use_backend grafana_backend if is_grafana2
+    
+    # Default to Keycloak
+    default_backend keycloak_backend
+
+# Frontend for Prometheus (with auth)
+frontend prometheus_front
+    bind :9090
+    mode http
+    
+    # Basic auth for Prometheus
+    acl auth_ok http_auth(prometheus_users)
+    http-request auth realm Prometheus if !auth_ok
+    
+    default_backend prometheus_backend
+
+# Frontend for Loki (with auth)
+frontend loki_front
+    bind :3101
+    mode http
+    
+    # Basic auth for Loki
+    acl auth_ok http_auth(loki_users)
+    http-request auth realm Loki if !auth_ok
+    
+    default_backend loki_backend
+
+# Keycloak backend with sticky sessions
+backend keycloak_backend
+    mode http
+    balance leastconn
+    
+    # Sticky sessions using SERVERID cookie (don't conflict with Keycloak's AUTH_SESSION_ID)
+    cookie SERVERID insert indirect nocache
+    
+    # Health check - Keycloak root responds with 302 redirect
+    option httpchk GET /
+    http-check expect status 302
+    
+    # Backend servers
+    server backend1 172.29.65.52:8080 check cookie backend1 inter 5s rise 2 fall 3
+    server backend2 172.29.65.53:8080 check cookie backend2 inter 5s rise 2 fall 3
+    server backend3 172.29.65.54:8080 check cookie backend3 inter 5s rise 2 fall 3
+
+# Grafana backend
+backend grafana_backend
+    mode http
+    balance roundrobin
+    option httpchk GET /api/health
+    http-check expect status 200
+    server grafana 127.0.0.1:3000 check inter 5s rise 2 fall 3
+
+# Prometheus backend
+backend prometheus_backend
+    mode http
+    balance roundrobin
+    server prometheus 127.0.0.1:9091 check inter 5s rise 2 fall 3
+
+# Loki backend
+backend loki_backend
+    mode http
+    balance roundrobin
+    server loki 127.0.0.1:3100 check inter 5s rise 2 fall 3
+
+# User authentication lists
+userlist prometheus_users
+    user {{ lookup('env', 'PROMETHEUS_AUTH_USER') | default('prometheus_admin', true) }} insecure-password {{ lookup('env', 'PROMETHEUS_AUTH_PASSWORD') | default('SecurePrometheus2024', true) }}
+
+userlist loki_users
+    user {{ lookup('env', 'PROMETHEUS_AUTH_USER') | default('prometheus_admin', true) }} insecure-password {{ lookup('env', 'PROMETHEUS_AUTH_PASSWORD') | default('SecurePrometheus2024', true) }}

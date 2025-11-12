@@ -42,10 +42,10 @@ This guide provides comprehensive step-by-step instructions to replicate, deploy
 #### Bastion Cluster (Public Subnet)
 
 - **Bastion Nodes (bastion1, bastion2):**
-  - **Nginx** (Reverse proxy with SSL termination for Keycloak and Grafana)
+  - **HAProxy** (Load balancer with SSL termination, SNI routing, and sticky sessions for Keycloak and Grafana)
   - **Public VIP:** 193.136.194.100 (Keepalived managed for HA)
   - **Monitoring Stack:** Prometheus, Grafana, Loki, Promtail
-  - **Exporters:** nginx-exporter, keepalived-exporter, node-exporter, cAdvisor
+  - **Exporters:** keepalived-exporter, node-exporter, cAdvisor
 
 ### High Availability Features
 
@@ -70,14 +70,15 @@ Containerized-HighAvailability-master/
 │   │   ├── backend-keepalived-patroni.yml # Configure Patroni-aware DB VIP failover
 │   │   ├── backend-post.yml               # Post-deployment Keycloak configuration
 │   │   ├── patch_pg_hba.yml               # PostgreSQL access control configuration
-│   │   ├── bastion.yml                    # Bastion proxy and public VIP setup
+│   │   ├── bastion.yml                    # Bastion proxy (HAProxy) and public VIP setup
 │   │   ├── monitoring-bastion.yml         # Deploy Prometheus, Grafana, Loki on bastions
 │   │   ├── monitoring-backend.yml         # Deploy exporters and Promtail on backends
-│   │   ├── secure-monitoring.yml          # Add authentication to monitoring endpoints
-│   │   └── deploy-loki.yml                # Loki stack deployment (deprecated, now in monitoring-bastion)
+│   │   └── grant-postgres-exporter-permissions.yml  # Grant monitoring permissions to postgres_exporter user
 │   └── templates/
 │       ├── keepalived.conf.j2             # Keepalived configuration template
-│       ├── check_nginx.sh.j2              # Nginx health check script
+│       ├── keepalived-haproxy.conf.j2     # Keepalived with HAProxy tracking template
+│       ├── check_haproxy.sh.j2            # HAProxy health check script
+│       ├── haproxy.cfg.j2                 # HAProxy configuration template
 │       └── check_patroni_leader.sh.j2     # Patroni leader detection script
 ├── docker/
 │   ├── backend/
@@ -88,8 +89,7 @@ Containerized-HighAvailability-master/
 │   │   ├── patroni.yml.j2                 # Patroni configuration template
 │   │   └── .env                           # Backend environment variables (see section 4.3)
 │   └── bastion/
-│       ├── docker-compose.yml             # Bastion nginx service
-│       └── nginx.conf                     # Nginx reverse proxy configuration
+│       └── docker-compose-haproxy.yml     # Bastion HAProxy service
 ├── monitoring/
 │   ├── docker-compose.yml                 # Monitoring stack (Prometheus, Grafana, Loki, Promtail)
 │   ├── prometheus.yml                     # Prometheus scrape configuration
@@ -222,15 +222,17 @@ export MONITORING_HTPASSWD_PATH=/etc/nginx/.prometheus_htpasswd
 - `INTERFACE` is typically `enX0` or `eth0` depending on your network interface name
 - **Never commit the `.env` file with real credentials to version control**
 
-#### Monitoring Stack Environment File (`monitoring.env`)
+#### Monitoring Stack Environment Variables
 
-Create `monitoring.env` in the project root (this file is NOT committed to git):
+Grafana credentials are defined in `docker/backend/.env` file:
 
 ```bash
-# Monitoring stack credentials
-GRAFANA_ADMIN_USER=admin
-GRAFANA_ADMIN_PASSWORD=YourGrafanaPassword123
+# Grafana Admin Credentials
+export GRAFANA_ADMIN_USER=admin
+export GRAFANA_ADMIN_PASSWORD=SecureGrafanaAdmin2024
 ```
+
+These variables are automatically picked up when you source the `.env` file before deployment.
 
 ### 4.4. Configure Inventory and Variables
 
@@ -339,21 +341,28 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-post.yml
 
 ### 4.7. Deploy Bastion Proxy Layer
 
-Deploy Nginx reverse proxy with SSL termination and public VIP failover:
+Deploy HAProxy load balancer with SSL termination, SNI routing, sticky sessions, and public VIP failover:
 
 ```bash
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/bastion.yml -u <remote_user> --become
+# Source environment variables for HAProxy configuration
+source docker/backend/.env
+
+# Deploy HAProxy on bastions
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/bastion.yml
 ```
 
 **What this playbook does:**
 
 - Installs Keepalived for public VIP management (193.136.194.100)
-- Deploys nginx health check script for Keepalived
-- Configures Keepalived with nginx tracking (VIP follows healthy nginx)
+- Deploys HAProxy health check script for Keepalived
+- Configures Keepalived with HAProxy tracking (VIP follows healthy HAProxy)
 - Copies SSL certificates for Keycloak and Grafana domains
-- Starts Dockerized nginx with SSL termination
-- Configures nginx to proxy requests to backend Keycloak cluster
-- Sets up virtual hosts for grafana1 and grafana2
+- Creates combined PEM files (cert + key) required by HAProxy
+- Templates HAProxy configuration with environment variables
+- Starts Dockerized HAProxy with SSL termination and SNI routing
+- Configures sticky sessions using SERVERID cookie for Keycloak
+- Sets up hostname-based routing for Keycloak and Grafana (SNI)
+- Configures authentication for Prometheus and Loki endpoints
 
 ### 4.8. Access Keycloak
 
@@ -363,7 +372,13 @@ After successful deployment:
 - **Admin User:** `admin`
 - **Admin Password:** The value you set in `KC_BOOTSTRAP_ADMIN_PASSWORD` environment variable
 
-**Note:** The bastion nginx sets the correct X-Forwarded-\* headers and forces HTTPS for Keycloak. The Keycloak containers are configured with:
+**Note:** HAProxy sets the correct X-Forwarded-\* headers and forces HTTPS for Keycloak. HAProxy uses:
+
+- **Sticky Sessions:** SERVERID cookie to maintain session affinity (prevents redirect loops)
+- **SNI Routing:** Single port 443 with multiple SSL certificates for hostname-based routing
+- **Load Balancing:** leastconn algorithm for optimal distribution across Keycloak nodes
+
+The Keycloak containers are configured with:
 
 - `KC_HOSTNAME=keycloak.yourdomain.com`
 - `KC_HOSTNAME_URL=https://keycloak.yourdomain.com`
@@ -401,8 +416,8 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/monitoring-backend
 Deploy Prometheus, Grafana, Loki, and Promtail on bastion nodes:
 
 ```bash
-# Ensure monitoring.env file exists
-cat monitoring.env
+# Ensure environment variables are sourced
+source docker/backend/.env
 
 # Deploy monitoring stack
 ansible-playbook -i ansible/inventory/hosts ansible/playbooks/monitoring-bastion.yml
@@ -415,23 +430,17 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/monitoring-bastion
 - Deploys Grafana (port 3000) with provisioned data sources
 - Deploys Loki (port 3100) for log aggregation
 - Deploys Promtail on bastions for local log collection
-- Starts node-exporter, cAdvisor, keepalived-exporter, nginx-exporter on bastions
+- Deploys node-exporter, cAdvisor, keepalived-exporter on bastions
 - Configures all services with `docker compose --env-file .env`
 
-#### Step 3: Secure Monitoring Endpoints (Optional)
+#### Step 3: HAProxy Authentication
 
-Add HTTP Basic Authentication to Prometheus and Loki:
+HAProxy authentication for Prometheus and Loki is automatically configured during bastion deployment using environment variables:
 
-```bash
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/secure-monitoring.yml
-```
+- **PROMETHEUS_AUTH_USER** - Username for Prometheus/Loki access (from .env file)
+- **PROMETHEUS_AUTH_PASSWORD** - Password for Prometheus/Loki access (from .env file)
 
-**What this playbook does:**
-
-- Creates htpasswd file with credentials from environment variables
-- Configures nginx to require authentication for Prometheus and Loki
-- Protects `/metrics` endpoints behind authentication
-- Maintains public access to Grafana (Grafana has its own auth)
+These credentials are templated into HAProxy configuration during deployment. Grafana remains publicly accessible (has its own authentication).
 
 ### 4.10. Access Monitoring Services
 
