@@ -70,9 +70,10 @@
     - name: Start HAProxy exporter (bastion nodes)
       shell: |
         docker rm -f haproxy-exporter || true
-        docker run -d -p 9101:9101 --name haproxy-exporter --restart unless-stopped \
+        docker run -d -p 9101:9101 --name haproxy-exporter --restart unless-stopped --network host \
           quay.io/prometheus/haproxy-exporter:latest \
-          --haproxy.scrape-uri="http://host.docker.internal:8404/stats;csv"
+          --haproxy.scrape-uri="http://localhost:8404/stats;csv" \
+          --haproxy.server-metric-fields=2,3,4,5,6,7,8,9,13,14,15,16,17,18,21,24,33,35,38,39,40,41,42,43,44
       args:
         chdir: "{{ monitoring_dir }}"
       ignore_errors: yes

@@ -45,7 +45,7 @@ This guide provides comprehensive step-by-step instructions to replicate, deploy
   - **HAProxy** (Load balancer with SSL termination, SNI routing, and sticky sessions for Keycloak and Grafana)
   - **Public VIP:** 193.136.194.100 (Keepalived managed for HA)
   - **Monitoring Stack:** Prometheus, Grafana, Loki, Promtail
-  - **Exporters:** keepalived-exporter, node-exporter, cAdvisor
+  - **Exporters:** haproxy-exporter, keepalived-exporter, node-exporter, cAdvisor
 
 ### High Availability Features
 
@@ -118,6 +118,26 @@ Containerized-HighAvailability-master/
 ---
 
 ## 4. Step-by-Step Deployment
+
+### Deployment Order Summary
+
+Complete deployment requires running playbooks in this specific order:
+
+1. **backend-setup.yml** - Deploy etcd, Patroni, Keycloak on backend nodes
+2. **backend-keepalived-patroni.yml** - Configure database VIP with Patroni leader tracking
+3. **patch_pg_hba.yml** - Configure PostgreSQL access control
+4. **backend-post.yml** - Create Keycloak database and postgres_exporter user
+5. **bastion.yml** - Deploy HAProxy with SSL/SNI on bastion nodes
+6. **monitoring-backend.yml** - Deploy exporters on backend nodes
+7. **monitoring-bastion.yml** - Deploy Prometheus, Grafana, Loki, exporters on bastions
+
+**Important:** Always source `docker/backend/.env` before running any playbook:
+```bash
+source docker/backend/.env
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/<playbook-name>.yml
+```
+
+---
 
 ### 4.1. Prepare Remote Machines
 
@@ -430,8 +450,22 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/monitoring-bastion
 - Deploys Grafana (port 3000) with provisioned data sources
 - Deploys Loki (port 3100) for log aggregation
 - Deploys Promtail on bastions for local log collection
+- Deploys haproxy-exporter (port 9101) for HAProxy metrics in Prometheus format
 - Deploys node-exporter, cAdvisor, keepalived-exporter on bastions
 - Configures all services with `docker compose --env-file .env`
+
+**HAProxy Exporter Details:**
+
+The haproxy-exporter converts HAProxy stats (CSV format) to Prometheus metrics format:
+- Runs with `--network host` to access HAProxy stats on localhost:8404
+- Scrapes HAProxy stats endpoint: `http://localhost:8404/stats;csv`
+- Exposes Prometheus metrics on port 9101
+- Provides metrics like:
+  - `haproxy_backend_up` - Backend health status
+  - `haproxy_server_up` - Individual server status
+  - `haproxy_backend_http_requests_total` - Request counters
+  - `haproxy_backend_current_sessions` - Active connections
+  - `haproxy_server_check_duration_seconds` - Health check latency
 
 #### Step 3: HAProxy Authentication
 
@@ -479,10 +513,33 @@ After successful monitoring deployment:
 - Log exploration with LogQL queries via Explore tab
 - Container and host resource monitoring
 - Keycloak application metrics and logs
-- **Pre-built HA Dashboard:** Import `monitoring/grafana-dashboard-ha.json` for comprehensive HA monitoring
-  - Go to Grafana → Dashboards → New → Import
-  - Upload `grafana-dashboard-ha.json` from the `monitoring/` directory
-  - Select Prometheus and Loki data sources when prompted
+
+**Import Grafana Dashboards:**
+
+1. **Pre-built HA Dashboard:** Import `monitoring/grafana-dashboard-ha.json`
+   - Go to Grafana → Dashboards → New → Import
+   - Upload `grafana-dashboard-ha.json` from the `monitoring/` directory
+   - Select Prometheus and Loki data sources when prompted
+
+2. **HAProxy Monitoring Dashboard (Recommended):**
+   - Go to Grafana → Dashboards → New → Import
+   - Enter Dashboard ID: **367** (HAProxy Full)
+   - Click Load → Select your Prometheus datasource → Import
+   - **Note:** Two panels require query modifications:
+     - **Check Duration panel:** Change query to:
+       ```
+       avg(haproxy_server_check_duration_seconds{backend=~"$backend", server=~"$server"}) * 1000
+       ```
+     - **New connections rate panel:** Change query to:
+       ```
+       rate(haproxy_server_sessions_total{backend=~"$backend", server=~"$server"}[5m])
+       ```
+   - This dashboard provides:
+     - Backend and server health status (UP/DOWN)
+     - Request rates and response times
+     - Active sessions and connection counts
+     - HTTP response codes distribution
+     - Server check durations
 
 ---
 
@@ -534,12 +591,33 @@ After successful monitoring deployment:
 
 - **Symptom:** 401/403 errors on Prometheus/Loki endpoints
 - **Solution:**
-  - Verify htpasswd file exists: `cat /etc/nginx/.prometheus_htpasswd`
-  - Recreate credentials:
+  - Verify HAProxy authentication configuration in `/opt/iam-bastion/haproxy.cfg`
+  - Check environment variables are properly sourced from `docker/backend/.env`
+  - Restart HAProxy: `ansible bastion -i ansible/inventory/hosts -m shell -a "cd /opt/iam-bastion && docker compose restart"`
+
+#### HAProxy Metrics Not Showing in Prometheus
+
+- **Symptom:** HAProxy targets DOWN in Prometheus or `haproxy_up 0`
+- **Solution:**
+  - Verify haproxy-exporter is running: `docker ps | grep haproxy-exporter`
+  - Check exporter logs: `docker logs haproxy-exporter --tail 50`
+  - Test HAProxy stats endpoint: `curl -s http://localhost:8404/stats` (should return HTML)
+  - Test exporter metrics: `curl -s http://localhost:9101/metrics | grep haproxy_backend_up`
+  - If `haproxy_up 0`, redeploy with host network:
     ```bash
-    htpasswd -bc /etc/nginx/.prometheus_htpasswd prometheus_admin YourPassword
+    ansible bastion -i ansible/inventory/hosts -m shell -a "docker rm -f haproxy-exporter && docker run -d -p 9101:9101 --name haproxy-exporter --restart unless-stopped --network host quay.io/prometheus/haproxy-exporter:latest --haproxy.scrape-uri='http://localhost:8404/stats;csv'"
     ```
-  - Restart nginx: `cd /opt/iam-bastion && docker compose restart nginx`
+
+#### HAProxy Dashboard Shows No Data
+
+- **Symptom:** Grafana dashboard imported but panels are blank
+- **Solution:**
+  - Verify Prometheus is scraping HAProxy exporter: Check Prometheus UI → Targets → haproxy job
+  - Test metrics directly: `curl http://<bastion-ip>:9090/api/v1/query?query=haproxy_backend_up`
+  - For Dashboard 367, update panel queries:
+    - **Check Duration:** Change to `avg(haproxy_server_check_duration_seconds{backend=~"$backend", server=~"$server"}) * 1000`
+    - **New connections rate:** Change to `rate(haproxy_server_sessions_total{backend=~"$backend", server=~"$server"}[5m])`
+  - Ensure dashboard variables use correct queries (no `alias` label needed)
 
 ### Useful Debugging Commands
 
@@ -646,6 +724,8 @@ curl -s http://<bastion-ip>:3100/metrics | grep loki_ingester
 - **Keycloak:** `http://<node-ip>:8080/health/ready` and `:9000/q/health`
 - **Patroni:** `http://<node-ip>:8008/health`
 - **etcd:** `http://<node-ip>:2379/health`
+- **HAProxy:** `http://<bastion-ip>:8404/stats` (HTML stats page)
+- **HAProxy Metrics:** `http://<bastion-ip>:9101/metrics` (Prometheus format)
 - **Prometheus:** `http://<bastion-ip>:9090/-/healthy`
 - **Grafana:** `http://<bastion-ip>:3000/api/health`
 - **Loki:** `http://<bastion-ip>:3100/ready`
@@ -872,6 +952,32 @@ docker exec -it keycloak-backend /opt/keycloak/bin/kcadm.sh config credentials \
   --server http://localhost:8080 --realm master --user admin
 ```
 
+### HAProxy Management
+
+```bash
+# Check HAProxy logs
+docker logs -f iam-bastion-haproxy-1
+
+# Access HAProxy stats page (HTML)
+curl http://localhost:8404/stats
+# Or in browser: http://<bastion-ip>:8404/stats
+
+# Check HAProxy metrics (Prometheus format)
+curl http://localhost:9101/metrics | grep haproxy_backend
+
+# View backend status
+curl -s http://localhost:9101/metrics | grep haproxy_backend_up
+
+# View server status
+curl -s http://localhost:9101/metrics | grep haproxy_server_up
+
+# Check HAProxy health
+docker exec iam-bastion-haproxy-1 sh -c "echo 'show info' | socat /var/run/haproxy.sock stdio"
+
+# Restart HAProxy
+ansible bastion -i ansible/inventory/hosts -m shell -a "cd /opt/iam-bastion && docker compose restart"
+```
+
 ### Monitoring Stack
 
 ```bash
@@ -885,6 +991,9 @@ curl http://localhost:9090/api/v1/targets | jq
 
 # Query Prometheus metrics
 curl 'http://localhost:9090/api/v1/query?query=up'
+
+# Check HAProxy metrics in Prometheus
+curl 'http://localhost:9090/api/v1/query?query=haproxy_backend_up'
 
 # Check Promtail status
 docker logs promtail-backend
@@ -911,7 +1020,8 @@ curl http://localhost:9187/metrics  # postgres-exporter
 curl http://localhost:9100/metrics  # node-exporter
 curl http://localhost:9323/metrics  # cAdvisor
 curl http://localhost:9165/metrics  # keepalived-exporter
-curl http://localhost:9113/metrics  # nginx-exporter
+curl http://localhost:9101/metrics  # haproxy-exporter
+curl http://localhost:8404/stats    # HAProxy stats (HTML)
 
 # System resource usage
 df -h  # Disk usage
