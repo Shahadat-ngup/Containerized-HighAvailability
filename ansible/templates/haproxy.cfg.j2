@@ -1,9 +1,15 @@
 global
     log stdout format raw local0 info
-    maxconn 4096
+    maxconn 10000
+    nbthread 8
     # SSL/TLS configuration
     ssl-default-bind-ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305
     ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
+    # SSL performance tuning
+    tune.ssl.default-dh-param 2048
+    tune.ssl.maxrecord 1400
+    tune.ssl.cachesize 100000
+    tune.ssl.lifetime 600
     # Stats socket for Prometheus scraping
     stats socket /var/run/haproxy.sock mode 660 level admin
     stats timeout 30s
@@ -40,8 +46,10 @@ frontend http_front
 
 # Frontend for HTTPS - SNI routing by hostname
 frontend https_front
-    bind :443 ssl crt /etc/ssl/certs/{{ domain_name }}.combined.pem crt /etc/ssl/certs/grafana1.ccom.ipb.pt.combined.pem crt /etc/ssl/certs/grafana2.ccom.ipb.pt.combined.pem
+    bind :443 ssl crt /etc/ssl/certs/{{ domain_name }}.combined.pem crt /etc/ssl/certs/grafana1.ccom.ipb.pt.combined.pem crt /etc/ssl/certs/grafana2.ccom.ipb.pt.combined.pem maxconn 10000
     mode http
+    # Frontend connection limits
+    maxconn 10000
     
     # Set proper X-Forwarded headers
     http-request set-header X-Real-IP %[src]
@@ -98,10 +106,10 @@ backend keycloak_backend
     option httpchk GET /
     http-check expect status 302
     
-    # Backend servers
-    server backend1 172.29.65.52:8080 check cookie backend1 inter 5s rise 2 fall 3
-    server backend2 172.29.65.53:8080 check cookie backend2 inter 5s rise 2 fall 3
-    server backend3 172.29.65.54:8080 check cookie backend3 inter 5s rise 2 fall 3
+    # Backend servers with increased connection limits
+    server backend1 172.29.65.52:8080 check cookie backend1 inter 5s rise 2 fall 3 maxconn 4000
+    server backend2 172.29.65.53:8080 check cookie backend2 inter 5s rise 2 fall 3 maxconn 4000
+    server backend3 172.29.65.54:8080 check cookie backend3 inter 5s rise 2 fall 3 maxconn 4000
 
 # Grafana backend
 backend grafana_backend

@@ -132,6 +132,7 @@ Complete deployment requires running playbooks in this specific order:
 7. **monitoring-bastion.yml** - Deploy Prometheus, Grafana, Loki, exporters on bastions
 
 **Important:** Always source `docker/backend/.env` before running any playbook:
+
 ```bash
 source docker/backend/.env
 ansible-playbook -i ansible/inventory/hosts ansible/playbooks/<playbook-name>.yml
@@ -457,6 +458,7 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/monitoring-bastion
 **HAProxy Exporter Details:**
 
 The haproxy-exporter converts HAProxy stats (CSV format) to Prometheus metrics format:
+
 - Runs with `--network host` to access HAProxy stats on localhost:8404
 - Scrapes HAProxy stats endpoint: `http://localhost:8404/stats;csv`
 - Exposes Prometheus metrics on port 9101
@@ -517,6 +519,7 @@ After successful monitoring deployment:
 **Import Grafana Dashboards:**
 
 1. **Pre-built HA Dashboard:** Import `monitoring/grafana-dashboard-ha.json`
+
    - Go to Grafana → Dashboards → New → Import
    - Upload `grafana-dashboard-ha.json` from the `monitoring/` directory
    - Select Prometheus and Loki data sources when prompted
