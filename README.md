@@ -1,4 +1,3 @@
-````markdown
 # Containerized High Availability Keycloak Stack - Complete Deployment Guide
 
 This guide provides comprehensive step-by-step instructions to replicate, deploy, and operate the full high-availability Keycloak stack with monitoring using this repository.
@@ -1099,4 +1098,3 @@ Contributions are welcome! Please ensure:
 **Project maintained by:** [Your Name/Organization]  
 **License:** [Your License]  
 **Last Updated:** January 2025
-````

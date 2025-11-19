@@ -20,3 +20,7 @@ Thumbs.db
 # Ignore my paper drafts
 paper_corrected.tex
 conference.tex
+
+# Ignore keycloak-benchmark results
+keycloak-benchmark-0.7
+kcb-0.7.zip
