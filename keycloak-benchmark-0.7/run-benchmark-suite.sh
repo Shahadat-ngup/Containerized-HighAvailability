@@ -3,7 +3,7 @@
 # Usage: ./run-benchmark-suite.sh
 
 CLIENT_ID="gatling-benchmark"
-CLIENT_SECRET="X6n8cDMI5vZ2qUYC10daxbrNzQUKOhIY"
+CLIENT_SECRET="YOUR_CLIENT_SECRET_HERE"
 SERVER_URL="https://keycloak.ipb.pt"
 REALM="master"
 
