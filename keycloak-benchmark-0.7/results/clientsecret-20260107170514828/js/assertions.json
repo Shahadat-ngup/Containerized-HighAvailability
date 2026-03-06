@@ -1,0 +1,27 @@
+{
+  "simulation": "keycloak.scenario.authentication.ClientSecret",
+  "simulationId": "clientsecret",
+  "start": 1767805514828,
+  "description": "",
+  "scenarios": ["Authentication - Client Secret"],
+  "assertions": [
+{
+  "path": "Global",
+  "target": "percentage of failed events",
+  "condition": "is less than or equal to",
+  "expectedValues": [0.0],
+  "result": true,
+  "message": "Global: percentage of failed events is less than or equal to 0.0",
+  "actualValue": [0.0]
+},
+{
+  "path": "Global",
+  "target": "mean of response time",
+  "condition": "is less than or equal to",
+  "expectedValues": [300.0],
+  "result": true,
+  "message": "Global: mean of response time is less than or equal to 300.0",
+  "actualValue": [34.0]
+}
+  ]
+}

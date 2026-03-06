@@ -21,6 +21,7 @@ Thumbs.db
 paper_corrected.tex
 conference.tex
 
-# Ignore keycloak-benchmark results
-keycloak-benchmark-0.7
+# Ignore keycloak-benchmark binaries/zip only; publish results, scripts, conf
+keycloak-benchmark-0.7/lib/
+keycloak-benchmark-0.7/bin/
 kcb-0.7.zip
