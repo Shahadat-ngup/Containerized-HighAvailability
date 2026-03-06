@@ -518,7 +518,6 @@ After successful monitoring deployment:
 **Import Grafana Dashboards:**
 
 1. **Pre-built HA Dashboard:** Import `monitoring/grafana-dashboard-ha.json`
-
    - Go to Grafana → Dashboards → New → Import
    - Upload `grafana-dashboard-ha.json` from the `monitoring/` directory
    - Select Prometheus and Loki data sources when prompted
@@ -1068,33 +1067,3 @@ tar -czf logs_$(date +%Y%m%d_%H%M%S).tar.gz *.log
 ---
 
 ## Note: Change all the secrets, like passwords, usernames later and different from the env files
-
-## 8. Contact & Support
-
-For questions, issues, or contributions related to this High Availability Keycloak setup:
-
-- **GitHub Repository:** Open an issue for bug reports, feature requests, or technical questions
-- **Documentation:** Refer to `DEPLOYMENT-GUIDE.md` for additional troubleshooting and maintenance procedures
-- **Community Support:** Check the official documentation for Patroni, Keycloak, and Keepalived
-
-### Additional Resources
-
-- **Patroni Documentation:** https://patroni.readthedocs.io/
-- **Keycloak Documentation:** https://www.keycloak.org/documentation
-- **Keepalived Documentation:** https://www.keepalived.org/doc/
-- **Prometheus/Grafana Guides:** https://prometheus.io/docs/ and https://grafana.com/docs/
-
-### Contributing
-
-Contributions are welcome! Please ensure:
-
-- Test all changes in a non-production environment
-- Update relevant documentation (README.md, DEPLOYMENT-GUIDE.md)
-- Follow existing code style and playbook structure
-- Include clear commit messages explaining changes
-
----
-
-**Project maintained by:** [Your Name/Organization]  
-**License:** [Your License]  
-**Last Updated:** January 2025
