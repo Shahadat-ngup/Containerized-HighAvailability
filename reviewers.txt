@@ -1,0 +1,199 @@
+Institute for Systems and Technologies of Information, Control and Communication
+CLOSER 2026 - Paper #27
+Paper Title: Self-Hosted High-Availability IAM System: A Reproducible
+Architecture
+Reviewer #1
+General Assessment (Please assign scores using the following criteria (1=weakest; 6=strongest))
+Relevance (Paper fits one or more of the topic areas?): 5
+Originality (Newness of the ideas expressed): 3
+Technical Quality (Theoretical soundness/methodology): 5
+Significance (Is the problem worth the given attention?): 5
+Presentation (Structure/Length/English): 5
+Overall Rating (Weighted value of above items): 5
+Improvement Suggestions (for authors to consider in the camera-ready version. Additional detail in "Observations" )
+Abstract and Introduction are adequate? Yes
+Needs more experimental results? No
+Needs comparative evaluation? No
+Improve critical discussion ? (validation): No
+Figures are adequate ? (in number and quality): No
+Conclusions/Future Work are convincing? Yes
+References are up-to-date and appropriate? Yes
+Paper formatting needs adjustment? No
+Improve English? No
+Detailed comments to authors, including aspects that must be improved in the camera-ready version of the
+paper:
+This paper describes a reproducible HA architecture for Keycloak based on Docker Compose thus eliminating
+cloud vendor dependencies
+while maintaining enterprise−grade reliability . It also reports empirical performance together with
+infrastructure−as−code artifacts
+which will be made publicly available.
+The paper is easy to read and follow. It presents deployment and benchmarking results based on a rigor
+scientific methodology.
+Realistic scenarios have been simulated and measured.
+Minor Comments
+−−−−−−−−−−−−−−
+− Figure 4 is not readable and overloaded
+− Figure 4 is not readable
+− The value of Figure 4 and 5 is not clear , can be removed.
+− Screenshot usage of GUI tools should be limited in scientific work
+e-mail: reviews@insticc.org
+Institute for Systems and Technologies of Information, Control and Communication
+Despite being more on the engineering side of publications , the work addresses a highly relevant and interesting
+topic.
+Enabling digital sovereignty by developing well configured and rigorously tested infrastructure playbooks can
+be an important new branch in applied research.
+Therefore, I recommend to accept the work as short paper.
+e-mail: reviews@insticc.org
+Institute for Systems and Technologies of Information, Control and Communication
+CLOSER 2026 - Paper #27
+Paper Title: Self-Hosted High-Availability IAM System: A Reproducible
+Architecture
+Reviewer #2
+General Assessment (Please assign scores using the following criteria (1=weakest; 6=strongest))
+Relevance (Paper fits one or more of the topic areas?): 5
+Originality (Newness of the ideas expressed): 3
+Technical Quality (Theoretical soundness/methodology): 4
+Significance (Is the problem worth the given attention?): 5
+Presentation (Structure/Length/English): 4
+Overall Rating (Weighted value of above items): 3
+Improvement Suggestions (for authors to consider in the camera-ready version. Additional detail in "Observations" )
+Abstract and Introduction are adequate? Too short
+Needs more experimental results? Yes
+Needs comparative evaluation? Yes
+Improve critical discussion ? (validation): Yes
+Figures are adequate ? (in number and quality): No
+Conclusions/Future Work are convincing? No
+References are up-to-date and appropriate? Yes
+Paper formatting needs adjustment? No
+Improve English? No
+Detailed comments to authors, including aspects that must be improved in the camera-ready version of the
+paper:
+The paper addresses a relevant problem in modern identity and access management infrastructure, proposing a
+self−hosted, high−availability architecture as an alternative to vendor−managed solutions such as
+Keycloak. While the motivation regarding vendor lock−in is understandable, the authors’ critique of
+Keycloak’s reliance on Amazon Aurora PostgreSQL appears somewhat inconsistent, as Aurora is itself a
+managed PostgreSQL service that does not fundamentally differ from other cloud−hosted database offerings.
+This observation weakens the initial problem statement and would benefit from clearer articulation of what
+specific aspects of vendor lock−in the authors intend to address.
+Regarding the architectural approach, the paper criticizes a Kubernetes−based deployment strategy and
+characterizes it as introducing unnecessary complexity for fixed−capacity deployments. This claim is
+debatable, as Kubernetes has become a de facto standard for container orchestration and offers benefits
+beyond mere scalability, including automated recovery, declarative configuration , and ecosystem maturity.
+The paper would benefit from a more nuanced discussion of when Kubernetes−based approaches are and are
+not appropriate.
+The authors present a custom system for PostgreSQL scaling that combines etcd for leader election with in−
+database status tracking to maintain consistency among peers. While this approach is technically sound, it
+e-mail: reviews@insticc.org
+Institute for Systems and Technologies of Information, Control and Communication
+essentially replicates functionality that is already available in container orchestration platforms such as
+Kubernetes, raising questions about the motivation. A clearer justification for building a custom
+solution rather than leveraging existing platform capabilities would strengthen the paper’s contribution.
+From a completeness standpoint, several aspects of the system are not fully explained. Some acronyms,
+particularly SNI and VIP management, appear without definition, which may hinder readers unfamiliar with
+these networking concepts. Additionally, the third node in the test bed, described as the backend, lacks
+sufficient detail for reproducibility . The authors also propose standard observability patterns using the
+Grafana stack with Prometheus and Loki, which is reasonable, but the omission of distributed tracing
+represents a missed opportunity for comprehensive system observability.
+The deployment approach using Docker Compose is presented as enabling atomic updates and version rollback.
+While containers do facilitate deployment reproducibility, the claim regarding atomicity is not entirely
+accurate, as Docker Compose does not provide true atomic rolling updates without additional tooling or
+orchestration. Furthermore, the authors do not consider Docker Swarm as a clustering solution, instead
+developing their own clustering mechanism. The reported deployment time of 8−10 minutes, while
+functional, is notably longer than what contemporary infrastructure−as−code and GitOps approaches can
+achieve.
+The experimental evaluation presents several limitations that affect the paper’s impact. The authors test only
+their proposed system without comparison against alternative solutions under identical conditions, which
+limits the ability to assess the relative merits of the approach. The scale in Figure 2 appears to warrant
+a logarithmic presentation for clarity . Additionally, the comparison in Table 3 is unfair to the baseline ,
+as the self −hosted solution does not account for multi−availability zone deployments, which is a critical
+consideration for production−grade high−availability systems. Finally, the paper would benefit from
+following academic conventions regarding reference formatting, as links to documentation pages should
+typically appear as footnotes rather than in the reference list .
+e-mail: reviews@insticc.org
+Institute for Systems and Technologies of Information, Control and Communication
+CLOSER 2026 - Paper #27
+Paper Title: Self-Hosted High-Availability IAM System: A Reproducible
+Architecture
+Reviewer #3
+General Assessment (Please assign scores using the following criteria (1=weakest; 6=strongest))
+Relevance (Paper fits one or more of the topic areas?): 5
+Originality (Newness of the ideas expressed): 3
+Technical Quality (Theoretical soundness/methodology): 3
+Significance (Is the problem worth the given attention?): 4
+Presentation (Structure/Length/English): 3
+Overall Rating (Weighted value of above items): 3
+Improvement Suggestions (for authors to consider in the camera-ready version. Additional detail in "Observations" )
+Abstract and Introduction are adequate? Yes
+Needs more experimental results? No
+Needs comparative evaluation? Yes
+Improve critical discussion ? (validation): Yes
+Figures are adequate ? (in number and quality): Yes
+Conclusions/Future Work are convincing? No
+References are up-to-date and appropriate? No
+Paper formatting needs adjustment? Yes
+Improve English? No
+Detailed comments to authors, including aspects that must be improved in the camera-ready version of the
+paper:
+The paper clearly addresses a pragmatic and relevant challenge: deploying a self −hosted Identity and Access
+Management (IAM) solution with High Availability (HA). The paper references Aurora PostgreSQL and
+focuses on PostgreSQL in the implementation. However, Keycloak officially supports multiple database
+systems (e.g., MariaDB, MySQL, MSSQL and Oracle). The rationale for selecting PostgreSQL as the
+exclusive database layer is not sufficiently justified. At the same time, the framing could further emphasise
+the academic novelty and methodological contribution besides the engineering integration.
+In particular , the following improvements are recommended:
+* Clarify more explicitly what is novel compared to existing Keycloak HA approaches and reference
+architectures.
+*
+Strengthen the problem statement by distinguishing amongst the engineering integration, the empirical
+validation and the methodological reproducibility.
+* Explicitly articulate the research contribution in methodological terms.
+* With regard to the selected technical components, briefly explain why alternatives were excluded.
+*
+Increase the emphasis on peer−reviewed academic literature (e.g. HA architectures for stateful services ,
+failover detection mechanisms and IAM performance benchmarking), as the bibliography relies heavily on
+product documentation and manuals.
+e-mail: reviews@insticc.org
+Institute for Systems and Technologies of Information, Control and Communication
+* Explicitly state cost modelling assumptions, as the cost comparison is useful but lacks detailed assumptions
+behind the estimations.
+* Acknowledge that the cloud provider comparison is subject to limitations (or consider additional providers),
+as the evaluation is currently limited to AWS only.
+Last but not least , the paper prioritises HA validation but omits security hardening. Nevertheless, production
+deployments require TLS enforcement and secrets management. The manuscript would benefit from clarifying
+how these aspects are addressed within the proposed architecture or, alternatively, explicitly scoping them
+out as future work.
+e-mail: reviews@insticc.org
+Institute for Systems and Technologies of Information, Control and Communication
+CLOSER 2026 - Paper #27
+Paper Title: Self-Hosted High-Availability IAM System: A Reproducible
+Architecture
+Reviewer #4
+General Assessment (Please assign scores using the following criteria (1=weakest; 6=strongest))
+Relevance (Paper fits one or more of the topic areas?): 5
+Originality (Newness of the ideas expressed): 4
+Technical Quality (Theoretical soundness/methodology): 5
+Significance (Is the problem worth the given attention?): 5
+Presentation (Structure/Length/English): 5
+Overall Rating (Weighted value of above items): 5
+Improvement Suggestions (for authors to consider in the camera-ready version. Additional detail in "Observations" )
+Abstract and Introduction are adequate? Yes
+Needs more experimental results? Yes
+Needs comparative evaluation? No
+Improve critical discussion ? (validation): No
+Figures are adequate ? (in number and quality): Yes
+Conclusions/Future Work are convincing? Yes
+References are up-to-date and appropriate? Yes
+Paper formatting needs adjustment? No
+Improve English? No
+Detailed comments to authors, including aspects that must be improved in the camera-ready version of the
+paper:
+The paper demonstrates a reliable, self −hosted, high−availability Keycloak setup that achieves strong
+performance and seamless failover for mid−scale enterpriseswithout needing Kubernetes or cloud−specific
+infrastructure .
+While the experiments follow a rigorous statistical design, additional results would significantly strengthen
+the overall validation . Firstly , more trials (higher n) for both performance and failover scenarios would
+help demonstrate production durability, not just short benchmark success. Secondly, authentication systems
+behave differently depending on configuration and use case. Broader, mixed workloads would show the
+architecture works beyond the specific tested case. Finally, the failover test is strong (0% error during
+recovery), but only one failure class appears tested. More convincing validation would include network
+partitions, node crashes vs. graceful shutdown, ansd multi−component cascading failures.
