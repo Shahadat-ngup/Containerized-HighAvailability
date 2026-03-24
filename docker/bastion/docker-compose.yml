@@ -8,3 +8,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /etc/ssl/private:/etc/ssl/private:ro
       - /etc/nginx/.prometheus_htpasswd:/etc/nginx/.prometheus_htpasswd:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

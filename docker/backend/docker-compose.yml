@@ -20,6 +20,11 @@ services:
       - ETCD_INITIAL_CLUSTER=etcd-1=http://172.29.65.52:2380,etcd-2=http://172.29.65.53:2380,etcd-3=http://172.29.65.54:2380
       - ETCD_INITIAL_CLUSTER_STATE=new
       - ETCD_INITIAL_CLUSTER_TOKEN=${ETCD_TOKEN:-etcd-cluster-keycloak}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     # Temporarily disable health check for single node deployment
     # healthcheck:
     #   test: ["CMD-SHELL", "ETCDCTL_API=3 etcdctl endpoint health --endpoints=127.0.0.1:2379"]
@@ -47,6 +52,11 @@ services:
       - REPLICATOR_PASSWORD=${REPLICATOR_PASSWORD}
       - PATRONI_NAME=patroni-${NODE_ID}
       - ETCDCTL_ENDPOINTS=http://172.29.65.52:2379,http://172.29.65.53:2379,http://172.29.65.54:2379
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8008/health || exit 1"]
       interval: 30s
@@ -100,6 +110,11 @@ services:
       - KC_CACHE_STACK=jdbc-ping
       - JGROUPS_DISCOVERY_PROTOCOL=JDBC_PING
       - JGROUPS_DISCOVERY_PROPERTIES=datasource_jndi_name=java:jboss/datasources/KeycloakDS,info_writer_sleep_time=500,initialize_sql="CREATE TABLE IF NOT EXISTS JGROUPSPING (own_addr varchar(200) NOT NULL, cluster_name varchar(200) NOT NULL, created timestamp default current_timestamp, ping_data BYTEA, constraint PK_JGROUPSPING PRIMARY KEY (own_addr, cluster_name))"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
     command: ["start"]
     healthcheck:

@@ -9,3 +9,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /etc/ssl/private:/etc/ssl/private:ro
     command: haproxy -f /usr/local/etc/haproxy/haproxy.cfg
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

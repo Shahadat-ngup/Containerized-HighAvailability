@@ -122,18 +122,25 @@ Containerized-HighAvailability-master/
 
 Complete deployment requires running playbooks in this specific order:
 
-1. **backend-setup.yml** - Deploy etcd, Patroni, Keycloak on backend nodes
-2. **backend-keepalived-patroni.yml** - Configure database VIP with Patroni leader tracking
-3. **patch_pg_hba.yml** - Configure PostgreSQL access control
-4. **backend-post.yml** - Create Keycloak database and postgres_exporter user
-5. **bastion.yml** - Deploy HAProxy with SSL/SNI on bastion nodes
-6. **monitoring-backend.yml** - Deploy exporters on backend nodes
-7. **monitoring-bastion.yml** - Deploy Prometheus, Grafana, Loki, exporters on bastions
+1. **backend-setup-persistentVolume.yml** - Deploy etcd, Patroni, and Keycloak on backend nodes (Includes DB VIP config and native pg_hba rules).
+2. **backend-post.yml** - Create Keycloak database and postgres_exporter user.
+3. **bastion.yml** - Deploy HAProxy with SSL/SNI on bastion nodes.
+4. **monitoring-bastion.yml** - Deploy Prometheus, Grafana, Loki, exporters on bastions.
+5. **monitoring-backend.yml** - Deploy exporters on backend nodes.
 
-**Important:** Always source `docker/backend/.env` before running any playbook:
+**Important:** You must **always export the environment variables from your `.env` file into your shell session** before running any playbook, so Ansible can read the passwords. If you don't do this, the database will initialize with blank passwords and the cluster will permanently crash.
+
+Run this before any playbook execution:
 
 ```bash
+set -a
 source docker/backend/.env
+set +a
+```
+
+Then run the playbooks:
+
+```bash
 ansible-playbook -i ansible/inventory/hosts ansible/playbooks/<playbook-name>.yml
 ```
 
@@ -290,10 +297,12 @@ This deploys etcd, Patroni PostgreSQL cluster, Keycloak, and configures the data
 
 ```bash
 # Source the backend environment variables
+set -a
 source docker/backend/.env
+set +a
 
 # Deploy backend infrastructure
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-setup.yml
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-setup-persistentVolume.yml
 ```
 
 Note: if you previously sourced `docker/backend/.env` from Windows (CRLF endings) you may get failures where filenames include a stray carriage-return (^M) and Ansible cannot find the certificate files. If that happens, detect and fix it locally, then re-source the file:
@@ -314,48 +323,26 @@ dos2unix ansible/templates/*.sh.j2 2>/dev/null || true
 dos2unix secrets/request_cert.sh 2>/dev/null || true
 # re-source so exported vars are correct in your shell
 unset DOMAIN_NAME
-source docker/backend/.env
+set -a && source docker/backend/.env && set +a
 ```
 
 **What this playbook does:**
 
 - Installs Docker, docker-compose, and Keepalived on all backend nodes
 - Builds the Patroni Docker image
-- Creates and templates configuration files (patroni.yml, .env)
+- Creates and templates configuration files (patroni.yml, .env with native pg_hba rules allowing replicator and postgres access)
 - Deploys etcd cluster for distributed coordination
 - Starts Patroni PostgreSQL cluster with automatic failover
 - Deploys Keycloak containers (3 nodes with JDBC_PING clustering)
 - Configures Keepalived to manage the PostgreSQL VIP (172.29.65.100)
 - Deploys the Patroni leader detection script for VIP failover
 
-#### Step 2: Configure Patroni-aware VIP Failover
+#### Step 2: Post-Deployment PostgreSQL Configuration
 
-You need to reconfigure the database VIP to strictly follow the Patroni leader:
-
-```bash
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-keepalived-patroni.yml
-```
-
-**What this playbook does:**
-
-- Ensures Keepalived is configured with Patroni leader tracking
-- Deploys/updates the `check_patroni_leader.sh` health check script
-- VIP will automatically migrate to whichever node holds the Patroni leader role
-- Provides failover for database connections
-
-#### Step 3: Patch PostgreSQL Access Control
-
-Configure `pg_hba.conf` to allow Keycloak and replication connections:
+After the cluster has successfully established quorum and leader election is complete, initialize the specific application databases:
 
 ```bash
-ansible-playbook -i ansible/inventory/hosts ansible/playbooks/patch_pg_hba.yml
-```
-
-#### Step 4: Post-Deployment Keycloak Setup
-
-Create the Keycloak database and perform health checks:
-
-```bash
+set -a && source docker/backend/.env && set +a
 ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-post.yml
 ```
 
@@ -365,7 +352,7 @@ Deploy HAProxy load balancer with SSL termination, SNI routing, sticky sessions,
 
 ```bash
 # Source environment variables for HAProxy configuration
-source docker/backend/.env
+set -a && source docker/backend/.env && set +a
 
 # Deploy HAProxy on bastions
 ansible-playbook -i ansible/inventory/hosts ansible/playbooks/bastion.yml
@@ -437,7 +424,7 @@ Deploy Prometheus, Grafana, Loki, and Promtail on bastion nodes:
 
 ```bash
 # Ensure environment variables are sourced
-source docker/backend/.env
+set -a && source docker/backend/.env && set +a
 
 # Deploy monitoring stack
 ansible-playbook -i ansible/inventory/hosts ansible/playbooks/monitoring-bastion.yml
@@ -1067,3 +1054,7 @@ tar -czf logs_$(date +%Y%m%d_%H%M%S).tar.gz *.log
 ---
 
 ## Note: Change all the secrets, like passwords, usernames later and different from the env files
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
