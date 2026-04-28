@@ -116,14 +116,20 @@
         mode: "0755"
     - name: Stop and remove existing containers
       shell: |
-        docker stop etcd-backend{{ postgres_node_id }} patroni-backend{{ postgres_node_id }} keycloak-backend{{ postgres_node_id }} || true
-        docker rm etcd-backend{{ postgres_node_id }} patroni-backend{{ postgres_node_id }} keycloak-backend{{ postgres_node_id }} || true
-        docker stop postgres-backend{{ postgres_node_id }} || true
-        docker rm postgres-backend{{ postgres_node_id }} || true
+        if [ -d "/opt/iam-backend" ]; then
+          cd /opt/iam-backend
+          docker compose down --volumes --remove-orphans || true
+        fi
+        docker rm -f etcd-backend{{ postgres_node_id }} patroni-backend{{ postgres_node_id }} keycloak-backend{{ postgres_node_id }} || true
+        docker rm -f postgres-backend{{ postgres_node_id }} || true
       ignore_errors: yes
 
-    - name: Remove persistent PostgreSQL volume
-      shell: docker volume rm iam-backend_postgres_data || true
+    - name: Remove persistent Data volumes (PostgreSQL + etcd)
+      shell: |
+        docker volume rm iam-backend_postgres_data || true
+        docker volume rm iam-backend_etcd_data || true
+        sudo rm -rf /var/lib/docker/volumes/iam-backend_postgres_data || true
+        sudo rm -rf /var/lib/docker/volumes/iam-backend_etcd_data || true
       ignore_errors: yes
 
     - name: Remove any old patroni.yml config
@@ -162,13 +168,32 @@
       register: patroni_render_check
       failed_when: patroni_render_check.rc != 0
       changed_when: false
-    - name: Start Docker services with rebuild
+    - name: Start infrastructure stack on backend1 (etcd, Patroni)
       shell: |
         cd /opt/iam-backend
         docker compose down --remove-orphans --volumes
         docker compose pull etcd-backend keycloak-backend
-        docker compose up -d --build
-      register: docker_result
-    - name: Show Docker compose output
+        docker compose up -d --build etcd-backend patroni-backend
+      when: inventory_hostname == 'backend1'
+      register: docker_result_backend1
+      ignore_errors: yes
+
+    - name: Start DB stack on backend2/backend3 (etcd, Patroni only)
+      shell: |
+        cd /opt/iam-backend
+        docker compose down --remove-orphans --volumes
+        docker compose pull etcd-backend
+        docker compose up -d --build etcd-backend patroni-backend
+      when: inventory_hostname != 'backend1'
+      register: docker_result_other_backends
+      ignore_errors: yes
+
+    - name: Show Docker compose output for backend1
       debug:
-        var: docker_result
+        var: docker_result_backend1.stdout_lines
+      when: inventory_hostname == 'backend1'
+
+    - name: Show Docker compose output for backend2/backend3
+      debug:
+        var: docker_result_other_backends.stdout_lines
+      when: inventory_hostname != 'backend1'

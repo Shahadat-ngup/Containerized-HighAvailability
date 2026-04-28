@@ -4,74 +4,57 @@
   become: yes
   tasks:
     - name: Find Patroni leader
-      shell: curl -s http://127.0.0.1:8008/cluster | jq -r '.members[] | select(.role=="leader") | .name'
+      shell: curl -s http://127.0.0.1:8008/cluster | jq -r '.members[]? | select(.role=="leader") | .name'
       register: patroni_leader
       changed_when: false
       run_once: true
       delegate_to: backend1
+      retries: 30
+      delay: 5
+      until: patroni_leader.stdout != ""
 
     - name: Ensure keycloak database exists
       shell: |
-        docker exec patroni-backend1 psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'keycloak'" | grep -q 1 || \
-        docker exec patroni-backend1 psql -U postgres -c "CREATE DATABASE keycloak OWNER keycloak;"
-      changed_when: false
-      when: inventory_hostname == 'backend1'
-
-    - name: Create postgres_exporter user with monitoring permissions
-      shell: |
-        LEADER_NODE=$(echo "{{ patroni_leader.stdout }}" | sed 's/patroni-/backend/')
-        docker exec patroni-{{ patroni_leader.stdout | replace('patroni-', 'backend') }} psql -U postgres -d postgres -tc "SELECT 1 FROM pg_roles WHERE rolname = 'postgres_exporter'" | grep -q 1 || \
-        docker exec patroni-{{ patroni_leader.stdout | replace('patroni-', 'backend') }} psql -U postgres -d postgres -c "CREATE USER postgres_exporter WITH PASSWORD '{{ POSTGRES_PASSWORD }}'; GRANT pg_monitor TO postgres_exporter; GRANT CONNECT ON DATABASE postgres TO postgres_exporter;"
+        docker exec {{ patroni_leader.stdout | replace('patroni-', 'patroni-backend') }} psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname = 'keycloak'" | grep -q 1 || \
+        docker exec {{ patroni_leader.stdout | replace('patroni-', 'patroni-backend') }} psql -U postgres -c "CREATE USER keycloak WITH PASSWORD '{{ POSTGRES_PASSWORD }}';"; \
+        docker exec {{ patroni_leader.stdout | replace('patroni-', 'patroni-backend') }} psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'keycloak'" | grep -q 1 || \
+        docker exec {{ patroni_leader.stdout | replace('patroni-', 'patroni-backend') }} psql -U postgres -c "CREATE DATABASE keycloak OWNER keycloak;"
       changed_when: false
       run_once: true
       delegate_to: "{{ 'backend' + patroni_leader.stdout.split('-')[1] }}"
 
-    - name: Start Keycloak container on backend2
-      shell: docker start keycloak-backend2
-      when: inventory_hostname == 'backend2'
-      register: keycloak_start_backend2
-      changed_when: keycloak_start_backend2.rc == 0
+    - name: Create postgres_exporter user with monitoring permissions
+      shell: |
+        docker exec {{ patroni_leader.stdout | replace('patroni-', 'patroni-backend') }} psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname = 'postgres_exporter'" | grep -q 1 || \
+        docker exec {{ patroni_leader.stdout | replace('patroni-', 'patroni-backend') }} psql -U postgres -c "CREATE USER postgres_exporter WITH PASSWORD '{{ POSTGRES_PASSWORD }}'; GRANT pg_monitor TO postgres_exporter;"
+        # Make sure postgres_exporter can connect to keycloak
+        docker exec {{ patroni_leader.stdout | replace('patroni-', 'patroni-backend') }} psql -U postgres -c "GRANT CONNECT ON DATABASE keycloak TO postgres_exporter;"
+      changed_when: false
+      run_once: true
+      delegate_to: "{{ 'backend' + patroni_leader.stdout.split('-')[1] }}"
+
+    - name: Ensure postgres_exporter container is restarted
+      shell: docker restart postgres-exporter || true
       ignore_errors: yes
 
-    - name: Start Keycloak container on backend3
-      shell: docker start keycloak-backend3
-      when: inventory_hostname == 'backend3'
-      register: keycloak_start_backend3
-      changed_when: keycloak_start_backend3.rc == 0
+    - name: Start Keycloak on all backend nodes
+      shell: |
+        cd /opt/iam-backend
+        docker compose up -d keycloak-backend
+      register: keycloak_start
+      changed_when: keycloak_start.rc == 0
       ignore_errors: yes
-    - name: Wait for etcd to be ready
-      wait_for:
-        port: 2379
-        host: "{{ ansible_default_ipv4.address }}"
-        delay: 10
-        timeout: 60
-
-    - name: Wait for PostgreSQL to be ready
-      wait_for:
-        port: 5432
-        host: "{{ ansible_default_ipv4.address }}"
-        delay: 30
-        timeout: 180
 
     - name: Wait for Keycloak to be ready
       wait_for:
         port: 8080
         host: "{{ ansible_default_ipv4.address }}"
-        delay: 60
+        delay: 30
         timeout: 300
-
-    - name: Display health check results
-      debug:
-        msg: "{{ item.item.service }}: {{ 'HEALTHY' if item.status == 200 else 'UNHEALTHY' }}"
-      loop: "{{ health_check.results }}"
-      when: health_check.results is defined
 
     - name: Display service endpoints
       debug:
         msg: |
           Backend services deployed on {{ ansible_hostname }} ({{ ansible_default_ipv4.address }}):
-          - etcd: http://{{ ansible_default_ipv4.address }}:2379
           - PostgreSQL: {{ ansible_default_ipv4.address }}:5432
           - Keycloak: http://{{ ansible_default_ipv4.address }}:8080
-          - Admin Console: http://{{ ansible_default_ipv4.address }}:8080/admin
-          - Health Check: http://{{ ansible_default_ipv4.address }}:8080/health/ready
