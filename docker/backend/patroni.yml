@@ -68,8 +68,12 @@ bootstrap:
     - data-checksums
     - locale: en_US.UTF-8
   users:
+    replicator:
+      password: ${REPLICATOR_PASSWORD}
+      options:
+        - replication
     keycloak:
-      password: {{ POSTGRES_PASSWORD }}
+      password: ${POSTGRES_PASSWORD}
       options:
         - createrole
         - createdb

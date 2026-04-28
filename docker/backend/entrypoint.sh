@@ -6,6 +6,20 @@ PGDATA="/var/lib/postgresql/data"
 PATRONI_NAME="${PATRONI_NAME:-}"
 ETCDCTL_ENDPOINTS="${ETCDCTL_ENDPOINTS:-http://172.29.65.52:2379}"
 
+run_patroni() {
+    if [ "$(id -u)" = "0" ]; then
+        exec su -s /bin/sh postgres -c "exec patroni /config/patroni.yml"
+    fi
+    exec patroni /config/patroni.yml
+}
+
+if [ "$(id -u)" = "0" ]; then
+    # Fix ownership before bootstrap so stale root-owned files cannot break startup loops.
+    mkdir -p "$PGDATA"
+    chown -R postgres:postgres /var/lib/postgresql || true
+    chmod 700 "$PGDATA" || true
+fi
+
 # Check if data directory is empty
 if [ ! -d "$PGDATA" ] || [ "`ls -A "$PGDATA" 2>/dev/null`" = "" ]; then
     echo "Data directory is empty. Cleaning up."
@@ -51,4 +65,7 @@ if command -v etcdctl >/dev/null 2>&1; then
     fi
 fi
 
-exec patroni /config/patroni.yml
+echo "Finally launching patroni..."
+run_patroni
+
+run_patroni
