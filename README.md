@@ -120,9 +120,10 @@ Containerized-HighAvailability-master/
 
 ### Deployment Order Summary
 
-Complete deployment requires running playbooks in this specific order:
+Complete deployment requires running playbooks in this specific order. For the first time (fresh install), you must use `backend-setup.yml` to clear out any old volumes and initialize a pristine environment. For subsequent updates without deleting data, use the persistent volume alternative.
 
-1. **backend-setup-persistentVolume.yml** - Deploy etcd, Patroni, and Keycloak on backend nodes (Includes DB VIP config and native pg_hba rules).
+1. **Fresh Installation (Wipes Storage):** `backend-setup.yml` - Deploy etcd, Patroni, and Keycloak, creating brand new volumes (Includes DB VIP config and native pg_hba rules).
+   _(Alternatively for Updates without losing data:_ `backend-setup-persistentVolume.yml`_)._
 2. **backend-post.yml** - Create Keycloak database and postgres_exporter user.
 3. **bastion.yml** - Deploy HAProxy with SSL/SNI certificate selection and Layer 7 Host routing on bastion nodes.
 4. **monitoring-bastion.yml** - Deploy Prometheus, Grafana, Loki, exporters on bastions.
@@ -293,7 +294,11 @@ Also update or create `ansible/inventory/host_vars/<hostname>.yml` for each node
 
 #### Step 1: Initial Backend Setup
 
-This deploys etcd, Patroni PostgreSQL cluster, Keycloak, and configures the database VIP with Keepalived:
+This deploys etcd, Patroni PostgreSQL cluster, Keycloak, and configures the database VIP with Keepalived.
+
+> **Note on Upgrades vs Fresh Installs:**
+> If this is your **first deployment**, use `ansible/playbooks/backend-setup.yml` which initializes fresh data volumes and completely wipes any old cluster data.
+> If you are **updating/redeploying** and want to keep your persistent data intact, use `ansible/playbooks/backend-setup-persistentVolume.yml`.
 
 ```bash
 # Source the backend environment variables
@@ -301,7 +306,10 @@ set -a
 source docker/backend/.env
 set +a
 
-# Deploy backend infrastructure
+# Deploy fresh backend infrastructure (WIPES VOLUMES!)
+ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-setup.yml
+
+# OR Deploy updates without losing data
 ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-setup-persistentVolume.yml
 ```
 
@@ -548,7 +556,7 @@ After successful monitoring deployment:
 
 - **Symptom:** Keycloak cannot connect to PostgreSQL
 - **Solution:**
-  - Check Patroni cluster status: `docker exec patroni-backend1 patronictl list`
+  - Check Patroni cluster status: `docker exec $(docker ps -q --filter "name=patroni-") patronictl list`
   - Verify VIP is on the current leader node
   - Check `pg_hba.conf` allows Keycloak connections
   - Rerun patch playbook if needed: `ansible-playbook patch_pg_hba.yml --become`
@@ -654,13 +662,13 @@ ansible all -i ansible/inventory/hosts -m shell -a "systemctl status keepalived"
 
 ```bash
 # View Patroni cluster status
-ansible postgres_cluster -i ansible/inventory/hosts -m shell -a "docker exec patroni-backend1 patronictl list"
+ansible postgres_cluster -i ansible/inventory/hosts -m shell -a "docker exec $(docker ps -q --filter "name=patroni-") patronictl list"
 
 # Check Patroni health endpoint
 ansible postgres_cluster -i ansible/inventory/hosts -m shell -a "curl -s http://localhost:8008/health | jq"
 
 # View Patroni configuration
-ansible backend1 -i ansible/inventory/hosts -m shell -a "docker exec patroni-backend1 patronictl show-config"
+ansible backend1 -i ansible/inventory/hosts -m shell -a "docker exec $(docker ps -q --filter "name=patroni-") patronictl show-config"
 ```
 
 #### Check Keycloak Clustering
@@ -811,7 +819,7 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/<playbook-name>.ym
 ansible postgres_cluster -i ansible/inventory/hosts -u <remote_user> --become -m shell -a "docker ps -a"
 
 # Execute command on specific host
-ansible backend1 -i ansible/inventory/hosts -u <remote_user> --become -m shell -a "docker logs patroni-backend --tail 50"
+ansible backend1 -i ansible/inventory/hosts -u <remote_user> --become -m shell -a "docker logs $(docker ps -q --filter "name=patroni-") --tail 50"
 ```
 
 ### Docker Management
@@ -846,22 +854,22 @@ docker inspect <container-name>
 
 ```bash
 # Check cluster status
-docker exec patroni-backend patronictl list
+docker exec $(docker ps -q --filter "name=patroni-") patronictl list
 
 # Show detailed cluster information
-docker exec patroni-backend patronictl list -e
+docker exec $(docker ps -q --filter "name=patroni-") patronictl list -e
 
 # View Patroni configuration
-docker exec patroni-backend patronictl show-config
+docker exec $(docker ps -q --filter "name=patroni-") patronictl show-config
 
 # Manually failover to specific node
-docker exec patroni-backend patronictl failover --candidate backend2 --force
+docker exec $(docker ps -q --filter "name=patroni-") patronictl failover --candidate backend2 --force
 
 # Reinitialize a replica
-docker exec patroni-backend patronictl reinit postgres_cluster backend2
+docker exec $(docker ps -q --filter "name=patroni-") patronictl reinit postgres_cluster backend2
 
 # Restart Patroni on a node
-docker exec patroni-backend patronictl restart postgres_cluster backend1
+docker exec $(docker ps -q --filter "name=patroni-") patronictl restart postgres_cluster backend1
 
 # Query Patroni API
 curl http://172.29.65.52:8008/cluster
@@ -899,29 +907,29 @@ curl http://localhost:9165/metrics
 
 ```bash
 # Connect to PostgreSQL via Patroni
-docker exec -it patroni-backend psql -U postgres
+docker exec -it $(docker ps -q --filter "name=patroni-") psql -U postgres
 
 # Connect to Keycloak database
-docker exec -it patroni-backend psql -U keycloak -d keycloak_db
+docker exec -it $(docker ps -q --filter "name=patroni-") psql -U keycloak -d keycloak_db
 
 # Check replication status (run on leader)
-docker exec patroni-backend psql -U postgres -c "SELECT * FROM pg_stat_replication;"
+docker exec $(docker ps -q --filter "name=patroni-") psql -U postgres -c "SELECT * FROM pg_stat_replication;"
 
 # Check replication lag (run on replica)
-docker exec patroni-backend psql -U postgres -c "SELECT now() - pg_last_xact_replay_timestamp() AS replication_lag;"
+docker exec $(docker ps -q --filter "name=patroni-") psql -U postgres -c "SELECT now() - pg_last_xact_replay_timestamp() AS replication_lag;"
 
 # List all databases
-docker exec patroni-backend psql -U postgres -c "\l"
+docker exec $(docker ps -q --filter "name=patroni-") psql -U postgres -c "\l"
 
 # Create manual backup
-docker exec patroni-backend pg_dump -U keycloak keycloak_db > keycloak_backup_$(date +%Y%m%d).sql
+docker exec $(docker ps -q --filter "name=patroni-") pg_dump -U keycloak keycloak_db > keycloak_backup_$(date +%Y%m%d).sql
 ```
 
 ### Keycloak Management
 
 ```bash
 # Check Keycloak logs
-docker logs -f keycloak-backend
+docker logs -f $(docker ps -q --filter "name=keycloak-")
 
 # Access Keycloak admin console
 # https://193.136.194.100/auth/admin/ or https://<DOMAIN_NAME>/auth/admin/
@@ -933,10 +941,10 @@ curl http://172.29.65.52:9000/health
 curl http://172.29.65.52:9000/metrics
 
 # Check Keycloak clustering (cache members)
-docker exec keycloak-backend bash -c "curl -s http://localhost:9000/metrics | grep jgroups_view_members"
+docker exec $(docker ps -q --filter "name=keycloak-") bash -c "curl -s http://localhost:9000/metrics | grep jgroups_view_members"
 
 # Execute Keycloak CLI
-docker exec -it keycloak-backend /opt/keycloak/bin/kcadm.sh config credentials \
+docker exec -it $(docker ps -q --filter "name=keycloak-") /opt/keycloak/bin/kcadm.sh config credentials \
   --server http://localhost:8080 --realm master --user admin
 ```
 
@@ -988,7 +996,7 @@ docker logs promtail-backend
 
 # View Loki logs
 curl -G -s "http://localhost:3100/loki/api/v1/query_range" \
-  --data-urlencode 'query={container_name="keycloak-backend"}' | jq
+  --data-urlencode 'query={container_name="$(docker ps -q --filter "name=keycloak-")"}' | jq
 
 # Restart monitoring stack on bastion
 ansible bastion -i ansible/inventory/hosts -u <remote_user> --become -m shell -a "cd /opt/monitoring && docker-compose restart"
@@ -1022,11 +1030,11 @@ netstat -tuln  # Listening ports
 
 ```bash
 # Backup etcd data
-docker exec etcd-backend etcdctl snapshot save /tmp/etcd-snapshot.db
-docker cp etcd-backend:/tmp/etcd-snapshot.db ./etcd-backup-$(date +%Y%m%d).db
+docker exec $(docker ps -q --filter "name=etcd-") etcdctl snapshot save /tmp/etcd-snapshot.db
+docker cp $(docker ps -q --filter "name=etcd-"):/tmp/etcd-snapshot.db ./etcd-backup-$(date +%Y%m%d).db
 
 # Backup Keycloak database
-docker exec patroni-backend pg_dump -U keycloak keycloak_db | \
+docker exec $(docker ps -q --filter "name=patroni-") pg_dump -U keycloak keycloak_db | \
   gzip > keycloak_db_backup_$(date +%Y%m%d).sql.gz
 
 # Backup Grafana dashboards
@@ -1034,7 +1042,7 @@ docker exec grafana grafana-cli admin export > grafana_backup_$(date +%Y%m%d).js
 
 # Restore PostgreSQL database
 gunzip -c keycloak_db_backup_20250101.sql.gz | \
-  docker exec -i patroni-backend psql -U keycloak keycloak_db
+  docker exec -i $(docker ps -q --filter "name=patroni-") psql -U keycloak keycloak_db
 ```
 
 ### Log Collection for Troubleshooting
@@ -1042,8 +1050,8 @@ gunzip -c keycloak_db_backup_20250101.sql.gz | \
 ```bash
 # Collect logs from all backend nodes
 for host in backend1 backend2 backend3; do
-  ssh $host "docker logs patroni-backend" > ${host}_patroni.log 2>&1
-  ssh $host "docker logs keycloak-backend" > ${host}_keycloak.log 2>&1
+  ssh $host "docker logs $(docker ps -q --filter "name=patroni-")" > ${host}_patroni.log 2>&1
+  ssh $host "docker logs $(docker ps -q --filter "name=keycloak-")" > ${host}_keycloak.log 2>&1
   ssh $host "journalctl -u keepalived" > ${host}_keepalived.log
 done
 
