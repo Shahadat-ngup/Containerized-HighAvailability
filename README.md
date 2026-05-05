@@ -41,7 +41,7 @@ This guide provides comprehensive step-by-step instructions to replicate, deploy
 #### Bastion Cluster (Public Subnet)
 
 - **Bastion Nodes (bastion1, bastion2):**
-  - **HAProxy** (Load balancer with SSL termination, SNI routing, and sticky sessions for Keycloak and Grafana)
+  - **HAProxy** (Load balancer with SSL termination, automated certificate selection via SNI, HTTP Host routing, and sticky sessions for Keycloak and Grafana)
   - **Public VIP:** 193.136.194.100 (Keepalived managed for HA)
   - **Monitoring Stack:** Prometheus, Grafana, Loki, Promtail
   - **Exporters:** haproxy-exporter, keepalived-exporter, node-exporter, cAdvisor
@@ -124,7 +124,7 @@ Complete deployment requires running playbooks in this specific order:
 
 1. **backend-setup-persistentVolume.yml** - Deploy etcd, Patroni, and Keycloak on backend nodes (Includes DB VIP config and native pg_hba rules).
 2. **backend-post.yml** - Create Keycloak database and postgres_exporter user.
-3. **bastion.yml** - Deploy HAProxy with SSL/SNI on bastion nodes.
+3. **bastion.yml** - Deploy HAProxy with SSL/SNI certificate selection and Layer 7 Host routing on bastion nodes.
 4. **monitoring-bastion.yml** - Deploy Prometheus, Grafana, Loki, exporters on bastions.
 5. **monitoring-backend.yml** - Deploy exporters on backend nodes.
 
@@ -348,7 +348,7 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/backend-post.yml
 
 ### 4.7. Deploy Bastion Proxy Layer
 
-Deploy HAProxy load balancer with SSL termination, SNI routing, sticky sessions, and public VIP failover:
+Deploy HAProxy load balancer with SSL termintion, automated SNI certificate selection, Layer 7 HTTP Host routing, sticky sessions, and public VIP failover:
 
 ```bash
 # Source environment variables for HAProxy configuration
@@ -366,9 +366,9 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/bastion.yml
 - Copies SSL certificates for Keycloak and Grafana domains
 - Creates combined PEM files (cert + key) required by HAProxy
 - Templates HAProxy configuration with environment variables
-- Starts Dockerized HAProxy with SSL termination and SNI routing
+- Starts Dockerized HAProxy with automated SNI certificate selection
 - Configures sticky sessions using SERVERID cookie for Keycloak
-- Sets up hostname-based routing for Keycloak and Grafana (SNI)
+- Sets up domain-based Layer 7 HTTP Host routing for Keycloak and Grafana
 - Configures authentication for Prometheus and Loki endpoints
 
 ### 4.8. Access Keycloak
@@ -382,7 +382,7 @@ After successful deployment:
 **Note:** HAProxy sets the correct X-Forwarded-\* headers and forces HTTPS for Keycloak. HAProxy uses:
 
 - **Sticky Sessions:** SERVERID cookie to maintain session affinity (prevents redirect loops)
-- **SNI Routing:** Single port 443 with multiple SSL certificates for hostname-based routing
+- **SNI Certificate Selection & Layer 7 Routing:** Single port 443 using SNI to fetch the correct SSL certificates, combined with Layer 7 HTTP Host headers for application routing
 - **Load Balancing:** leastconn algorithm for optimal distribution across Keycloak nodes
 
 The Keycloak containers are configured with:
@@ -1050,6 +1050,19 @@ done
 # Archive logs
 tar -czf logs_$(date +%Y%m%d_%H%M%S).tar.gz *.log
 ```
+
+---
+
+## 7. Performance Benchmarking & Statistical Validation
+
+To prove the High Availability limits of this stack, a custom Keycloak Benchmarking suite using the **Gatling Open Workload Model** has been implemented.
+
+If you navigate to the `/keycloak-benchmark-0.7/` directory, you will find execution shell scripts explicitly designed to battle-test this environment against "Coordinated Omission" anomalies:
+
+- **`run-10-trials-400rps.sh`**: Automatically loops Gatling `ClientSecret` authentications 10 times consecutively at a sustained 400 requests per second. It enforces a strict 120-second cooldown phase between each trial to allow JVM Memory Garbage Collection and TCP `TIME_WAIT` sockets to naturally expire.
+- **`run-failover-under-load.sh`**: Initiates a continuous baseline of traffic while you manually terminate a primary Patroni PostgreSQL node (`docker stop patroni-backend1`) to test the ~20 second etcd Raft election window and check for HTTP 502 failures resulting from the HAProxy Queue holding TCP sockets in a `WAITING` state.
+
+For complete statistical validation of latency spikes (P95/P99), view the `STATISTICAL-VALIDATION-GUIDE.md` file inside the benchmark folder.
 
 ---
 
