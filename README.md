@@ -122,8 +122,8 @@ Containerized-HighAvailability-master/
 
 Complete deployment requires running playbooks in this specific order. For the first time (fresh install), you must use `backend-setup.yml` to clear out any old volumes and initialize a pristine environment. For subsequent updates without deleting data, use the persistent volume alternative.
 
-1. **Fresh Installation (Wipes Storage):** `backend-setup.yml` - Deploy etcd, Patroni, and Keycloak, creating brand new volumes (Includes DB VIP config and native pg_hba rules).
-   _(Alternatively for Updates without losing data:_ `backend-setup-persistentVolume.yml`_)._
+1. **Fresh Installation (Wipes Storage):** `backend-setup.yml` - Deploy etcd, Patroni, and Keycloak, creating brand new volumes (Includes DB VIP config and native pg*hba rules).
+   *(Alternatively for Updates without losing data:_ `backend-setup-persistentVolume.yml`_).\_
 2. **backend-post.yml** - Create Keycloak database and postgres_exporter user.
 3. **bastion.yml** - Deploy HAProxy with SSL/SNI certificate selection and Layer 7 Host routing on bastion nodes.
 4. **monitoring-bastion.yml** - Deploy Prometheus, Grafana, Loki, exporters on bastions.
@@ -539,6 +539,24 @@ After successful monitoring deployment:
 
 ---
 
+### etcd Cluster Management
+
+Use the following commands to inspect and manage the etcd cluster running on the backend nodes. These commands execute via Ansible so they run on the remote nodes where the containers are hosted.
+
+```bash
+# 1) Check cluster health (runs on all backend nodes)
+ansible postgres_cluster -i ansible/inventory/hosts -m shell -a 'docker exec $(docker ps -q --filter "name=etcd-") etcdctl endpoint health --endpoints=127.0.0.1:2379'
+
+# 2) List cluster members (run on one backend node)
+ansible backend1 -i ansible/inventory/hosts -m shell -a 'docker exec $(docker ps -q --filter "name=etcd-") etcdctl member list -w table'
+
+# 3) View endpoint status (shows leader, raft term, version)
+ansible postgres_cluster -i ansible/inventory/hosts -m shell -a 'docker exec $(docker ps -q --filter "name=etcd-") etcdctl endpoint status --endpoints=127.0.0.1:2379 -w table'
+
+# 4) Create a snapshot (backup) and copy it to control host
+ansible backend1 -i ansible/inventory/hosts -m shell -a 'docker exec $(docker ps -q --filter "name=etcd-") etcdctl snapshot save /tmp/etcd-snapshot.db && docker cp $(docker ps -q --filter "name=etcd-"):/tmp/etcd-snapshot.db ./etcd-backup-$(date +%Y%m%d).db'
+```
+
 ## 5. Troubleshooting & Tips
 
 ### Common Issues
@@ -556,7 +574,7 @@ After successful monitoring deployment:
 
 - **Symptom:** Keycloak cannot connect to PostgreSQL
 - **Solution:**
-  - Check Patroni cluster status: `docker exec $(docker ps -q --filter "name=patroni-") patronictl list`
+  - Check Patroni cluster status: `docker exec $(docker ps -q --filter "name=patroni-") patronictl -c /config/patroni.yml list`
   - Verify VIP is on the current leader node
   - Check `pg_hba.conf` allows Keycloak connections
   - Rerun patch playbook if needed: `ansible-playbook patch_pg_hba.yml --become`
@@ -634,15 +652,15 @@ ansible bastion -i ansible/inventory/hosts -m shell -a "docker ps | grep -E '(pr
 
 ```bash
 # Backend services
-ansible backend1 -i ansible/inventory/hosts -m shell -a "docker logs patroni-backend1 --tail 50"
-ansible backend1 -i ansible/inventory/hosts -m shell -a "docker logs keycloak-backend1 --tail 50"
-ansible backend1 -i ansible/inventory/hosts -m shell -a "docker logs etcd-backend1 --tail 50"
+ansible backend1 -i ansible/inventory/hosts -m shell -a "docker logs patroni-backend1 --tail 50'
+ansible backend1 -i ansible/inventory/hosts -m shell -a "docker logs keycloak-backend1 --tail 50'
+ansible backend1 -i ansible/inventory/hosts -m shell -a "docker logs etcd-backend1 --tail 50'
 
 # Monitoring services
-ansible bastion1 -i ansible/inventory/hosts -m shell -a "docker logs prometheus --tail 50"
-ansible bastion1 -i ansible/inventory/hosts -m shell -a "docker logs grafana --tail 50"
-ansible bastion1 -i ansible/inventory/hosts -m shell -a "docker logs loki --tail 50"
-ansible bastion1 -i ansible/inventory/hosts -m shell -a "docker logs promtail --tail 50"
+ansible bastion1 -i ansible/inventory/hosts -m shell -a "docker logs prometheus --tail 50'
+ansible bastion1 -i ansible/inventory/hosts -m shell -a "docker logs grafana --tail 50'
+ansible bastion1 -i ansible/inventory/hosts -m shell -a "docker logs loki --tail 50'
+ansible bastion1 -i ansible/inventory/hosts -m shell -a "docker logs promtail --tail 50'
 ```
 
 #### Check VIP Status
@@ -662,13 +680,13 @@ ansible all -i ansible/inventory/hosts -m shell -a "systemctl status keepalived"
 
 ```bash
 # View Patroni cluster status
-ansible postgres_cluster -i ansible/inventory/hosts -m shell -a "docker exec $(docker ps -q --filter "name=patroni-") patronictl list"
+ansible postgres_cluster -i ansible/inventory/hosts -m shell -a 'docker exec $(docker ps -q --filter "name=patroni-") patronictl -c /config/patroni.yml list'
 
 # Check Patroni health endpoint
 ansible postgres_cluster -i ansible/inventory/hosts -m shell -a "curl -s http://localhost:8008/health | jq"
 
 # View Patroni configuration
-ansible backend1 -i ansible/inventory/hosts -m shell -a "docker exec $(docker ps -q --filter "name=patroni-") patronictl show-config"
+ansible backend1 -i ansible/inventory/hosts -m shell -a 'docker exec $(docker ps -q --filter "name=patroni-") patronictl -c /config/patroni.yml show-config'
 ```
 
 #### Check Keycloak Clustering
@@ -819,7 +837,7 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/<playbook-name>.ym
 ansible postgres_cluster -i ansible/inventory/hosts -u <remote_user> --become -m shell -a "docker ps -a"
 
 # Execute command on specific host
-ansible backend1 -i ansible/inventory/hosts -u <remote_user> --become -m shell -a "docker logs $(docker ps -q --filter "name=patroni-") --tail 50"
+ansible backend1 -i ansible/inventory/hosts -u <remote_user> --become -m shell -a 'docker logs \$\(docker ps -q --filter "name=patroni-") --tail 50'
 ```
 
 ### Docker Management
@@ -854,22 +872,22 @@ docker inspect <container-name>
 
 ```bash
 # Check cluster status
-docker exec $(docker ps -q --filter "name=patroni-") patronictl list
+docker exec $(docker ps -q --filter "name=patroni-") patronictl -c /config/patroni.yml list
 
 # Show detailed cluster information
-docker exec $(docker ps -q --filter "name=patroni-") patronictl list -e
+docker exec $(docker ps -q --filter "name=patroni-") patronictl -c /config/patroni.yml list -e
 
 # View Patroni configuration
-docker exec $(docker ps -q --filter "name=patroni-") patronictl show-config
+docker exec $(docker ps -q --filter "name=patroni-") patronictl -c /config/patroni.yml show-config
 
 # Manually failover to specific node
-docker exec $(docker ps -q --filter "name=patroni-") patronictl failover --candidate backend2 --force
+docker exec $(docker ps -q --filter "name=patroni-") patronictl -c /config/patroni.yml failover --candidate backend2 --force
 
 # Reinitialize a replica
-docker exec $(docker ps -q --filter "name=patroni-") patronictl reinit postgres_cluster backend2
+docker exec $(docker ps -q --filter "name=patroni-") patronictl -c /config/patroni.yml reinit postgres_cluster backend2
 
 # Restart Patroni on a node
-docker exec $(docker ps -q --filter "name=patroni-") patronictl restart postgres_cluster backend1
+docker exec $(docker ps -q --filter "name=patroni-") patronictl -c /config/patroni.yml restart postgres_cluster backend1
 
 # Query Patroni API
 curl http://172.29.65.52:8008/cluster
@@ -1050,8 +1068,8 @@ gunzip -c keycloak_db_backup_20250101.sql.gz | \
 ```bash
 # Collect logs from all backend nodes
 for host in backend1 backend2 backend3; do
-  ssh $host "docker logs $(docker ps -q --filter "name=patroni-")" > ${host}_patroni.log 2>&1
-  ssh $host "docker logs $(docker ps -q --filter "name=keycloak-")" > ${host}_keycloak.log 2>&1
+  ssh $host 'docker logs \$\(docker ps -q --filter "name=patroni-")" > ${host}_patroni.log 2>&1
+  ssh $host 'docker logs \$\(docker ps -q --filter "name=keycloak-")" > ${host}_keycloak.log 2>&1
   ssh $host "journalctl -u keepalived" > ${host}_keepalived.log
 done
 
