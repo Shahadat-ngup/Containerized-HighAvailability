@@ -4,8 +4,8 @@
 
 cd /mnt/c/Users/Shaha/Documents/Containerized-HighAvailability/keycloak-benchmark-0.7
 
-CLIENT_ID="gatling-benchmark"
-CLIENT_SECRET="YOUR_CLIENT_SECRET_HERE"
+CLIENT_ID="gatling-test"
+CLIENT_SECRET="IOcvkOTTnTK3oQTCNUoi4DRLZfCqHzsY"
 SERVER_URL="https://keycloak.ipb.pt"
 REALM="master"
 
@@ -28,7 +28,7 @@ for i in {1..10}; do
     --realm-name=$REALM \
     --client-id=$CLIENT_ID \
     --client-secret=$CLIENT_SECRET \
-    --users-per-sec=400 \
+    --users-per-sec=800 \
     --measurement-time=30
   
   if [ $i -lt 10 ]; then
