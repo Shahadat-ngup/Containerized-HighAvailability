@@ -6,40 +6,8 @@
     prometheus_username: "prometheus_admin"
     prometheus_password: "SecurePrometheus2024"
     grafana_admin_password: "SecureGrafanaAdmin2024"
-    htpasswd_path: "/etc/nginx/.prometheus_htpasswd"
 
   tasks:
-    - name: Install apache2-utils for htpasswd
-      apt:
-        name: apache2-utils
-        state: present
-        update_cache: yes
-
-    - name: Ensure /etc/nginx directory exists
-      file:
-        path: /etc/nginx
-        state: directory
-        mode: "0755"
-        owner: root
-        group: root
-
-    - name: Create htpasswd file for Prometheus authentication using command
-      shell: |
-        htpasswd -bc "{{ htpasswd_path }}" "{{ prometheus_username }}" "{{ prometheus_password }}"
-        chown root:root "{{ htpasswd_path }}"
-        chmod 644 "{{ htpasswd_path }}"
-      args:
-        creates: "{{ htpasswd_path }}"
-
-    - name: Copy updated nginx configuration
-      copy:
-        src: ../../docker/bastion/nginx.conf
-        dest: /opt/iam-bastion/nginx.conf
-        owner: root
-        group: root
-        mode: 0644
-      notify: restart nginx
-
     - name: Copy updated monitoring docker-compose
       copy:
         src: ../../monitoring/docker-compose.yml
@@ -60,17 +28,6 @@
         - promtail-config.yml
         - prometheus.yml
 
-    - name: Copy updated bastion docker-compose with htpasswd volume
-      copy:
-        src: ../../docker/bastion/docker-compose.yml
-        dest: /opt/iam-bastion/docker-compose.yml
-        owner: root
-        group: root
-        mode: 0644
-
-    - name: Restart bastion services to apply nginx changes with new volumes
-      shell: cd /opt/iam-bastion && docker-compose down nginx && docker-compose up -d nginx
-
     - name: Restart monitoring services with new configuration
       shell: cd /opt/monitoring && docker-compose down && docker-compose up -d
 
@@ -81,9 +38,9 @@
         delay: 10
         timeout: 60
       loop:
-        - 9090 # Prometheus (through Nginx)
-        - 9003 # Grafana (through Nginx on new port)
-        - 3101 # Loki (through Nginx on new port)
+        - 9090 # Prometheus (through HAProxy)
+        - 9003 # Grafana 
+        - 3101 # Loki (through HAProxy)
 
     - name: Test Prometheus authentication
       uri:
@@ -107,7 +64,3 @@
           - "   - Prometheus: http://{{ ansible_default_ipv4.address }}:9090"
           - "   - Grafana: http://{{ ansible_default_ipv4.address }}:9003"
           - "   - Loki: http://{{ ansible_default_ipv4.address }}:3101"
-
-  handlers:
-    - name: restart nginx
-      shell: cd /opt/iam-bastion && docker-compose restart nginx
