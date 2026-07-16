@@ -2,6 +2,8 @@
 
 This guide provides comprehensive step-by-step instructions to replicate, deploy, and operate the full high-availability Keycloak stack with monitoring using this repository.
 
+Note: All public IP addresses and domain names shown in this guide are documentation-only placeholders based on RFC 5737, used for security and privacy reasons.
+
 ---
 
 ## 1. Prerequisites & Environment

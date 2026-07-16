@@ -1,5 +1,7 @@
 # Keycloak Benchmark Test Suite
 
+Note: All public IP addresses and domain names shown in this benchmark guide are documentation-only placeholders based on RFC 5737, used for security and privacy reasons.
+
 ## Prerequisites
 
 1. **Client created in Keycloak:**
