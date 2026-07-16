@@ -42,7 +42,7 @@ This guide provides comprehensive step-by-step instructions to replicate, deploy
 
 - **Bastion Nodes (bastion1, bastion2):**
   - **HAProxy** (Load balancer with SSL termination, automated certificate selection via SNI, HTTP Host routing, and sticky sessions for Keycloak and Grafana)
-  - **Public VIP:** 193.136.194.100 (Keepalived managed for HA)
+  - **Public VIP:** 198.51.100.100 (Keepalived managed for HA)
   - **Monitoring Stack:** Prometheus, Grafana, Loki, Promtail
   - **Exporters:** haproxy-exporter, keepalived-exporter, node-exporter, cAdvisor
 
@@ -100,12 +100,12 @@ Containerized-HighAvailability-master/
 │   └── grafana-dashboard-ha.json          # Pre-configured HA monitoring dashboard (import in Grafana)
 ├── secrets/
 │   ├── .lego/certificates/
-│   │   ├── keycloak.ipb.pt.pem
-│   │   ├── keycloak.ipb.pt.key
-│   │   ├── grafana1.ccom.ipb.pt.pem
-│   │   ├── grafana1.ccom.ipb.pt.key
-│   │   ├── grafana2.ccom.ipb.pt.pem
-│   │   └── grafana2.ccom.ipb.pt.key
+│   │   ├── keycloak.example.com.pem
+│   │   ├── keycloak.example.com.key
+│   │   ├── grafana1.example.com.pem
+│   │   ├── grafana1.example.com.key
+│   │   ├── grafana2.example.com.pem
+│   │   └── grafana2.example.com.key
 │   ├── vault.yaml                         # Ansible vault for secrets (not committed)
 │   └── request_cert.sh                    # SSL certificate request script (Lego/Dynu)
 ├── monitoring.env                          # Monitoring stack environment (NOT committed to git)
@@ -152,16 +152,16 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/<playbook-name>.ym
 **Node Requirements:**
 
 - **Backend nodes:** 3 Linux VMs (private subnet recommended: 172.29.65.52-54)
-- **Bastion nodes:** 2 Linux VMs (public IPs recommended: 193.136.194.103-104)
+- **Bastion nodes:** 2 Linux VMs (public IPs recommended: 198.51.100.103-104)
 - **VIPs:**
   - PostgreSQL VIP: 172.29.65.100 (internal, follows Patroni leader)
-  - Public VIP: 193.136.194.100 (external, for Keycloak access)
+  - Public VIP: 198.51.100.100 (external, for Keycloak access)
 
 **Important:** While you can keep the same private subnet IPs (172.29.65.x) for your backend nodes, you **must change** the three public IPs in your deployment:
 
-- `bastion1`: Change `193.136.194.103` to your first public IP
-- `bastion2`: Change `193.136.194.104` to your second public IP
-- `Public VIP`: Change `193.136.194.100` to your public VIP
+- `bastion1`: Change `198.51.100.103` to your first public IP
+- `bastion2`: Change `198.51.100.104` to your second public IP
+- `Public VIP`: Change `198.51.100.100` to your public VIP
 
 **SSH Setup:**
 
@@ -368,7 +368,7 @@ ansible-playbook -i ansible/inventory/hosts ansible/playbooks/bastion.yml
 
 **What this playbook does:**
 
-- Installs Keepalived for public VIP management (193.136.194.100)
+- Installs Keepalived for public VIP management (198.51.100.100)
 - Deploys HAProxy health check script for Keepalived
 - Configures Keepalived with HAProxy tracking (VIP follows healthy HAProxy)
 - Copies SSL certificates for Keycloak and Grafana domains
@@ -670,7 +670,7 @@ ansible bastion1 -i ansible/inventory/hosts -m shell -a "docker logs promtail --
 ansible postgres_cluster -i ansible/inventory/hosts -m shell -a "ip addr show enX0 | grep 172.29.65.100"
 
 # Check which bastion has the public VIP
-ansible bastion -i ansible/inventory/hosts -m shell -a "ip addr show enX0 | grep 193.136.194.100"
+ansible bastion -i ansible/inventory/hosts -m shell -a "ip addr show enX0 | grep 198.51.100.100"
 
 # Check Keepalived status
 ansible all -i ansible/inventory/hosts -m shell -a "systemctl status keepalived"
@@ -906,7 +906,7 @@ journalctl -u keepalived -f
 
 # Check which node has the VIP
 ip addr show | grep 172.29.65.100  # DB VIP
-ip addr show | grep 193.136.194.100  # Public VIP
+ip addr show | grep 198.51.100.100  # Public VIP
 
 # View keepalived configuration
 cat /etc/keepalived/keepalived.conf
@@ -950,7 +950,7 @@ docker exec $(docker ps -q --filter "name=patroni-") pg_dump -U keycloak keycloa
 docker logs -f $(docker ps -q --filter "name=keycloak-")
 
 # Access Keycloak admin console
-# https://193.136.194.100/auth/admin/ or https://<DOMAIN_NAME>/auth/admin/
+# https://198.51.100.100/auth/admin/ or https://<DOMAIN_NAME>/auth/admin/
 
 # Check Keycloak health
 curl http://172.29.65.52:9000/health
@@ -996,9 +996,9 @@ ansible bastion -i ansible/inventory/hosts -m shell -a "cd /opt/iam-bastion && d
 
 ```bash
 # Access monitoring UIs
-# Prometheus: http://193.136.194.100:9090
-# Grafana: https://193.136.194.100/grafana
-# Loki: http://193.136.194.100:3100 (API only)
+# Prometheus: http://198.51.100.100:9090
+# Grafana: https://198.51.100.100/grafana
+# Loki: http://198.51.100.100:3100 (API only)
 
 # Check Prometheus targets
 curl http://localhost:9090/api/v1/targets | jq

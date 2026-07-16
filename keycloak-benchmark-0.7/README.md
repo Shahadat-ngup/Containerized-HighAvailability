@@ -3,7 +3,6 @@
 ## Prerequisites
 
 1. **Client created in Keycloak:**
-
    - Client ID: `gatling-benchmark`
    - Client authentication: ON
    - Service accounts roles: ON
@@ -30,7 +29,7 @@ chmod +x run-benchmark-suite.sh
 # Test 1: Light Load (50 users/sec)
 ./bin/kcb.sh \
   --scenario=keycloak.scenario.authentication.ClientSecret \
-  --server-url=https://keycloak.ipb.pt \
+  --server-url=https://keycloak.example.com \
   --realm-name=master \
   --client-id=gatling-benchmark \
   --client-secret='YOUR_CLIENT_SECRET' \
@@ -40,7 +39,7 @@ chmod +x run-benchmark-suite.sh
 # Test 2: Medium Load (100 users/sec)
 ./bin/kcb.sh \
   --scenario=keycloak.scenario.authentication.ClientSecret \
-  --server-url=https://keycloak.ipb.pt \
+  --server-url=https://keycloak.example.com \
   --realm-name=master \
   --client-id=gatling-benchmark \
   --client-secret='YOUR_CLIENT_SECRET' \
@@ -50,7 +49,7 @@ chmod +x run-benchmark-suite.sh
 # Test 3: High Load (200 users/sec)
 ./bin/kcb.sh \
   --scenario=keycloak.scenario.authentication.ClientSecret \
-  --server-url=https://keycloak.ipb.pt \
+  --server-url=https://keycloak.example.com \
   --realm-name=master \
   --client-id=gatling-benchmark \
   --client-secret='YOUR_CLIENT_SECRET' \
@@ -60,7 +59,7 @@ chmod +x run-benchmark-suite.sh
 # Test 4: Stress Test (400 users/sec)
 ./bin/kcb.sh \
   --scenario=keycloak.scenario.authentication.ClientSecret \
-  --server-url=https://keycloak.ipb.pt \
+  --server-url=https://keycloak.example.com \
   --realm-name=master \
   --client-id=gatling-benchmark \
   --client-secret='YOUR_CLIENT_SECRET' \
@@ -135,7 +134,7 @@ ansible bastion1 -i ansible/inventory/hosts -m shell -a "docker stats --no-strea
 
 ```bash
 # Monitor HAProxy backend sessions
-watch -n 2 'curl -s http://193.136.194.103:9101/metrics | grep haproxy_backend_current_sessions'
+watch -n 2 'curl -s http://198.51.100.103:9101/metrics | grep haproxy_backend_current_sessions'
 ```
 
 ## Test Results Summary
